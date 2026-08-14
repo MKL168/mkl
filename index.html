@@ -1204,8 +1204,18 @@ function getCusts(){
 }
 function getUsers(){
   const stored=S.get('users')||[];
-  const all=[...BUILT_IN_USERS];
-  stored.forEach(u=>{if(!all.find(x=>x.id===u.id))all.push(u);});
+  const storedMap={};
+  stored.forEach(function(u){storedMap[u.id]=u;});
+  const all=[];
+  BUILT_IN_USERS.forEach(function(b){
+    var ov=storedMap[b.id];
+    if(ov&&ov._deleted)return; // permanently deleted — exclude even though it's a built-in account
+    all.push(ov||b); // use the stored version (e.g. suspended/removed) if present, else the default
+  });
+  stored.forEach(function(u){
+    if(u._deleted)return;
+    if(!BUILT_IN_USERS.find(function(b){return b.id===u.id;}))all.push(u);
+  });
   return all;
 }
 function getIssues(){return S.get('issues')||[];}
@@ -1715,7 +1725,10 @@ function renderUsers(){
       if(!u){alert('User not found (id: '+uid+').');return;}
       var ok=window.confirm('Permanently delete '+(u.name||u.username)+'\'s account?\n\nThis will erase their username, password, and history. This cannot be undone.');
       if(!ok)return;
-      S.set('users',users.filter(function(x){return x.id!==uid;}));
+      var stored=S.get('users')||[];
+      var newStored=stored.filter(function(x){return x.id!==uid;});
+      newStored.push({id:uid,_deleted:true}); // tombstone — makes sure this stays deleted even if it's a built-in account
+      S.set('users',newStored);
       toast('🗑 '+(u.name||u.username)+' permanently deleted');
       renderUsers();
     }catch(err){
