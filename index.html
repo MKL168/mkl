@@ -1213,7 +1213,7 @@ function markUserDeleted(uid){
 }
 
 function getUsers(){
-  const stored=S.get('users')||[];
+  const stored=(S.get('users')||[]).filter(function(u){return u&&u.id&&u.username;}); // guard against malformed/leftover entries
   const storedMap={};
   stored.forEach(function(u){storedMap[u.id]=u;});
   const all=BUILT_IN_USERS.map(function(b){return storedMap[b.id]||b;});
@@ -1634,6 +1634,7 @@ function renderUsers(){
     if(ra!==rb)return ra-rb;
     return (a.name||a.username).localeCompare(b.name||b.username);
   }).forEach(function(u,i){
+   try{
     var isMe=CU&&u.id===CU.id;
     var lastLog=(S.get('login_log')||[]).filter(function(l){return l.userId===u.id;}).slice(-1)[0];
     var lastLoginStr=lastLog?lastLog.loginAt.substring(0,10)+' '+lastLog.loginAt.substring(11,16):'Never';
@@ -1705,6 +1706,7 @@ function renderUsers(){
     }
     html+='</div>';
     html+='</div>';
+   }catch(err){ console.error("renderUsers row error for uid",u&&u.id,err); }
   });
   html+='</div>';
   el.innerHTML=html;
@@ -2439,7 +2441,7 @@ function clearAllData(){
   var ownerUser=getUsers().find(function(u){return u.role==='owner';});
 
   // Wipe all data keys
-  ['jobs','customers','users','issues','staff','workers','times',
+  ['jobs','customers','users','issues','staff','workers','times','deleted_user_ids',
    'clean_log','clean_settings','boiler_log','boiler_history','boiler_warnings','boiler_settings',
    'ops_log','ops_history','ops_settings','perf_log','perf_appeals',
    'leaves','ot_records','ot_schedules','absences','dayoffs',
