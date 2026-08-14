@@ -6953,17 +6953,13 @@ var WORK_AREAS=[
 function getWorkersData(){return S.get('workers_data')||[];}
 function saveWorkersData(d){S.set('workers_data',d);}
 function getAttendPeople(){
-  // Unify Staff tab workers (no login) with User accounts (have login) so Attendance
-  // tracks everyone, matching the same person-source Leave and Advance already use.
+  // Match the same person-source Leave and Advance use: Staff tab is the primary
+  // list of real employees; only fall back to login accounts if no Staff added yet.
   var staffList=(getWorkersData()||[]).map(function(w){
     return {id:w.id,name:w.name,username:w.name,role:w.role||'Worker',status:'active'};
   });
-  var userList=getUsers().filter(function(u){return u.status==='active';});
-  var seen={};var combined=[];
-  staffList.concat(userList).forEach(function(p){
-    if(!seen[p.id]){seen[p.id]=true;combined.push(p);}
-  });
-  return combined;
+  if(staffList.length)return staffList;
+  return getUsers().filter(function(u){return u.status==='active';});
 }
 
 function renderStaff(){
