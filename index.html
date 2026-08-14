@@ -1737,38 +1737,48 @@ function renderUsers(){
   });
 })();
 
+// Safely update a single user's stored record without disturbing anyone else's
+// data (including permanent-delete tombstones). Never save the full merged
+// getUsers() list back to storage — only ever touch the one record being changed.
+function saveUserOverride(uid,patch){
+  var stored=S.get('users')||[];
+  var i=stored.findIndex(function(x){return x.id===uid;});
+  if(i>=0){
+    stored[i]=Object.assign({},stored[i],patch);
+  } else {
+    var current=getUsers().find(function(x){return x.id===uid;});
+    if(!current)return null;
+    stored.push(Object.assign({},current,patch));
+  }
+  S.set('users',stored);
+  return stored;
+}
+
 function suspendUser(uid){
   if(!CU||(CU.role!=='admin'&&CU.role!=='owner')){toast('No permission',true);return;}
-  var users=getUsers();
-  var u=users.find(function(x){return x.id===uid;});
+  var u=getUsers().find(function(x){return x.id===uid;});
   if(!u){toast('User not found',true);return;}
   if(!confirm('Suspend '+( u.name||u.username)+'? They will not be able to log in.')){return;}
-  u.status='suspended';
-  S.set('users',users);
+  saveUserOverride(uid,{status:'suspended'});
   toast('⏸ '+( u.name||u.username)+' suspended');
   renderUsers();
 }
 
 function reinstateUser(uid){
   if(!CU||CU.role!=='owner'){toast('Owner only',true);return;}
-  var users=getUsers();
-  var u=users.find(function(x){return x.id===uid;});
+  var u=getUsers().find(function(x){return x.id===uid;});
   if(!u)return;
-  u.status='active';
-  S.set('users',users);
+  saveUserOverride(uid,{status:'active'});
   toast('✅ '+( u.name||u.username)+' reinstated');
   renderUsers();
 }
 
 function removeUser(uid){
   if(!CU||CU.role!=='owner'){toast('Owner only',true);return;}
-  var users=getUsers();
-  var u=users.find(function(x){return x.id===uid;});
+  var u=getUsers().find(function(x){return x.id===uid;});
   if(!u)return;
   if(!confirm('Permanently remove '+( u.name||u.username)+'?\n\nThey will see only the login screen and cannot access anything.')){return;}
-  // Mark as removed - they can't login
-  u.status='removed';
-  S.set('users',users);
+  saveUserOverride(uid,{status:'removed'});
   toast('🗑 '+( u.name||u.username)+' removed — cannot log in');
   renderUsers();
 }
