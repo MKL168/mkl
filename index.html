@@ -925,11 +925,6 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
       <div class="ff"><label class="fl">Password</label><input class="fi" id="um-pass" type="password" placeholder="Min 6 chars" maxlength="50"></div>
     </div>
     <div class="ff"><label class="fl">Role</label><select class="fs" id="um-role" onchange="updRole()"><option value="worker">👕 Worker</option><option value="supervisor">👔 Supervisor</option><option value="admin">👑 Admin</option></select></div>
-    <div id="um-acc">
-      <label class="fl">App Access</label>
-      <div class="tgl-row"><span class="tgl-lbl">🌊 Laundry Jobs</span><label class="tgl"><input type="checkbox" id="ua-l" checked><span class="tslider"></span></label></div>
-      <div class="tgl-row"><span class="tgl-lbl">⚙️ Maintenance</span><label class="tgl"><input type="checkbox" id="ua-m"><span class="tslider"></span></label></div>
-    </div>
     <div class="mact"><button class="mbtn-c" onclick="closeM('m-user')">Cancel</button><button class="mbtn-s" onclick="saveUser()">Save</button></div>
   </div>
 </div>
@@ -1182,10 +1177,10 @@ const SAMPLES=[
   {name:'Phnom Penh Cafe',business:'Phnom Penh Cafe',type:'Restaurant',pickupTime:'10:00',deliveryTime:'10:00',stages:['pickup','washing','drying','packaging','delivery']},
 ];
 const BUILT_IN_USERS=[
-  {id:'owner',username:'mekong.owner',password:'MekongOwner2024!',name:'System Owner',role:'owner',status:'active',access:{laundry:true,maintenance:true}},
-  {id:'admin1',username:'mekong.admin',password:'Admin1234!',name:'Admin',role:'admin',status:'active',access:{laundry:true,maintenance:true}},
-  {id:'worker1',username:'worker1',password:'worker1',name:'Worker 1',role:'worker',status:'active',access:{laundry:true,maintenance:true}},
-  {id:'worker2',username:'worker2',password:'worker2',name:'Worker 2',role:'worker',status:'active',access:{laundry:true,maintenance:true}},
+  {id:'owner',username:'mekong.owner',password:'MekongOwner2024!',name:'System Owner',role:'owner',status:'active'},
+  {id:'admin1',username:'mekong.admin',password:'Admin1234!',name:'Admin',role:'admin',status:'active'},
+  {id:'worker1',username:'worker1',password:'worker1',name:'Worker 1',role:'worker',status:'active'},
+  {id:'worker2',username:'worker2',password:'worker2',name:'Worker 2',role:'worker',status:'active'},
 ];
 
 // ═══ STATE ════════════════════════════════════════════════════════════════
@@ -1742,8 +1737,6 @@ function openUserModal(){
   document.getElementById('um-name').value='';
   document.getElementById('um-user').value='';
   document.getElementById('um-pass').value='';
-  document.getElementById('ua-l').checked=true;
-  document.getElementById('ua-m').checked=false;
   // Rebuild role select fresh
   var sel=document.getElementById('um-role');
   var me=CU?CU.role:'';
@@ -1752,7 +1745,6 @@ function openUserModal(){
   else sel.innerHTML='<option value="worker">👕 Worker</option>';
   sel.value='worker';
   sel.onchange=function(){updRole();};
-  var acc=document.getElementById('um-acc');if(acc)acc.style.display='block';
   document.getElementById('m-user').classList.add('on');
 }
 function editU(id){
@@ -1760,7 +1752,6 @@ function editU(id){
   document.getElementById('um-t').textContent='Edit User';document.getElementById('um-id').value=id;
   document.getElementById('um-name').value=u.name;document.getElementById('um-user').value=u.username;document.getElementById('um-pass').value='';
   document.getElementById('um-role').value=u.role;
-  var acc=u.access||{};document.getElementById('ua-l').checked=!!acc.laundry;document.getElementById('ua-m').checked=!!acc.maintenance;
   updRole();document.getElementById('m-user').classList.add('on');
 }
 function updRole(){
@@ -1774,20 +1765,17 @@ function updRole(){
     else sel.innerHTML='<option value="worker">👕 Worker</option>';
   }
   if(cur)sel.value=cur;
-  var acc=document.getElementById('um-acc');
-  if(acc)acc.style.display=sel.value==='worker'?'block':'none';
 }
 function saveUser(){
   var name=document.getElementById('um-name').value.trim();
   var uname=document.getElementById('um-user').value.trim().toLowerCase();
   var pass=document.getElementById('um-pass').value;
   var role=document.getElementById('um-role').value;
-  var access={laundry:document.getElementById('ua-l').checked,maintenance:document.getElementById('ua-m').checked};
   if(!name||!uname){toast('Enter name and username',true);return;}
   var id=document.getElementById('um-id').value;
   var allUsers=getUsers();
   if(id){
-    var upd={name:name,role:role,access:access};
+    var upd={name:name,role:role};
     if(pass.length>=6)upd.password=pass;else if(pass.length>0){toast('Password min 6 chars',true);return;}
     var stored=S.get('users')||[];var i=stored.findIndex(function(u){return u.id===id;});
     if(i>=0){stored[i]=Object.assign({},stored[i],upd);S.set('users',stored);}
@@ -1797,7 +1785,7 @@ function saveUser(){
     if(allUsers.find(function(u){return u.username===uname;})){toast('Username already taken',true);return;}
     var status=(CU.role==='owner'||CU.role==='admin')?'active':'pending';
     var stored2=S.get('users')||[];
-    stored2.push({id:'u'+Date.now(),name:name,username:uname,password:pass,role:role,access:access,status:status,createdBy:CU.username,createdAt:new Date().toISOString()});
+    stored2.push({id:'u'+Date.now(),name:name,username:uname,password:pass,role:role,status:status,createdBy:CU.username,createdAt:new Date().toISOString()});
     S.set('users',stored2);toast('User created — '+(status==='active'?'active':'pending approval'));
   }
   closeM('m-user');renderUsers();
@@ -2004,6 +1992,7 @@ function renderJobs(){
     if(j.carriedForward)html+=' <span style="color:#f59e0b;font-size:9px;">FWD</span>';
     html+='</div>';
     if(jot)html+='<div style="font-size:10px;color:#dc2626;font-weight:700;">⚠ OVERTIME</div>';
+    html+='<button onclick="delJob(\''+j.id+'\')" style="margin-top:3px;background:#fee2e2;color:#dc2626;border:none;border-radius:4px;padding:2px 6px;font-size:9px;font-weight:700;cursor:pointer;">✕ Remove</button>';
     html+='</td>';
 
     usedStages.forEach(function(s){
