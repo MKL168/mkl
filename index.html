@@ -1672,6 +1672,7 @@ function renderUsers(){
         html+='<button data-uid="'+u.id+'" onclick="removeUser(this.dataset.uid)" style="padding:3px 8px;background:#ef4444;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;">🗑 Remove</button>';
       } else if(u.status==='removed'){
         html+='<button data-uid="'+u.id+'" onclick="reinstateUser(this.dataset.uid)" style="padding:3px 8px;background:#16a34a;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;">↩ Restore</button>';
+        html+='<button data-uid="'+u.id+'" onclick="deleteUserPermanently(this.dataset.uid)" style="padding:3px 8px;background:#7f1d1d;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;">🗑 Delete Permanently</button>';
       }
     } else if(isAdmin&&u.role!=='owner'){
       // Admin can act on non-owner accounts only
@@ -1731,6 +1732,18 @@ function removeUser(uid){
   S.set('users',users);
   toast('🗑 '+( u.name||u.username)+' removed — cannot log in');
   renderUsers();
+}
+
+function deleteUserPermanently(uid){
+  if(!CU||CU.role!=='owner'){toast('Owner only',true);return;}
+  var users=getUsers();
+  var u=users.find(function(x){return x.id===uid;});
+  if(!u)return;
+  cfm('Delete Permanently','This will erase '+(u.name||u.username)+'\'s account completely — username, password, and history. This cannot be undone. Continue?',false,function(){
+    S.set('users',users.filter(function(x){return x.id!==uid;}));
+    toast('🗑 '+(u.name||u.username)+' permanently deleted');
+    renderUsers();
+  });
 }
 
 
