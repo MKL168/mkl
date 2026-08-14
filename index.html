@@ -5245,7 +5245,7 @@ function renderAttendSummary(month,ots,absences,leaves,dayoffs){
   var wrap=document.getElementById('att-sum-wrap');if(!wrap)return;
   if(!dayoffs)dayoffs=getDayOffs().filter(function(d){return d.month===month;});
   var totalDays=workingDaysInMonth(month);
-  var users=getUsers().filter(function(u){return u.status==='active';});
+  var users=getAttendPeople();
   var today=todayStr();
   var isCurrentMonth=month===today.substring(0,7);
   var edEl=document.getElementById('att-entry-date');
@@ -5488,7 +5488,7 @@ function renderAttendSummary(month,ots,absences,leaves,dayoffs){
 
 
 function inlineSetOTPlan(uid){
-  var user=getUsers().find(function(u){return u.id===uid;});
+  var user=getAttendPeople().find(function(u){return u.id===uid;});
   if(!user){toast('User not found',true);return;}
   var sEl=document.getElementById('pl-s-'+uid);
   var eEl=document.getElementById('pl-e-'+uid);
@@ -5540,7 +5540,7 @@ function otClockOut(uid){
 
 
 function inlineAddAbs(uid,halfStr){
-  var user=getUsers().find(function(u){return u.id===uid;});
+  var user=getAttendPeople().find(function(u){return u.id===uid;});
   if(!user){toast('User not found',true);return;}
   var dEl=document.getElementById('abs-d-'+uid);
   var date=dEl?dEl.value:todayStr();
@@ -5561,7 +5561,7 @@ function inlineAddAbs(uid,halfStr){
 }
 
 function inlineAddDayOff(uid){
-  var user=getUsers().find(function(u){return u.id===uid;});
+  var user=getAttendPeople().find(function(u){return u.id===uid;});
   if(!user){toast('User not found',true);return;}
   var dEl=document.getElementById('do-d-'+uid);
   var nEl=document.getElementById('do-n-'+uid);
@@ -5588,7 +5588,7 @@ function deleteDayOff(id){
 }
 
 function inlineAddOT(uid){
-  var user=getUsers().find(function(u){return u.id===uid;});
+  var user=getAttendPeople().find(function(u){return u.id===uid;});
   if(!user){toast('User not found',true);return;}
   var dEl=document.getElementById('ot-d-'+uid);
   var iEl=document.getElementById('ot-i-'+uid);
@@ -5681,7 +5681,7 @@ function exportAttendCSV(){
   var year=parseInt(month.split('-')[0]);
   var mon=parseInt(month.split('-')[1]);
   var daysInMonth=new Date(year,mon,0).getDate();
-  var users=getUsers().filter(function(u){return u.status==='active';});
+  var users=getAttendPeople();
   var allOTs=getOTs().filter(function(o){return o.month===month;});
   var allAbs=getAbsences().filter(function(a){return a.month===month;});
   var allLeaves=getLeaves().filter(function(l){return l.month===month&&l.status==='approved';});
@@ -5857,7 +5857,7 @@ function exportAttendCSV(){
 
 function exportAttendCSVFallback(month){
   var workDays=workingDaysInMonth(month);
-  var users=getUsers().filter(function(u){return u.status==='active';});
+  var users=getAttendPeople();
   var allOTs=getOTs().filter(function(o){return o.month===month&&o.status==='approved';});
   var allAbs=getAbsences().filter(function(a){return a.month===month;});
   var allLeaves=getLeaves().filter(function(l){return l.month===month&&l.status==='approved';});
@@ -5941,7 +5941,7 @@ function deleteOTSchedule(id){
 
 // Override inlineAddOT to compare against schedule
 function inlineAddOT(uid){
-  var user=getUsers().find(function(u){return u.id===uid;});
+  var user=getAttendPeople().find(function(u){return u.id===uid;});
   if(!user){toast('User not found',true);return;}
   var dEl=document.getElementById('ot-d-'+uid);
   var iEl=document.getElementById('ot-i-'+uid);
@@ -6022,7 +6022,7 @@ function exportFinanceExcel(){
   var absences=getAbsences().filter(function(a){return a.month===month;});
   var ots=getOTs().filter(function(o){return o.month===month&&o.status==='approved';});
   var dayoffs=getDayOffs().filter(function(d){return d.month===month;});
-  var users=getUsers().filter(function(u){return u.status==='active';});
+  var users=getAttendPeople();
   var totalDays=workingDaysInMonth(month);
 
   var payRows=[['MEKONG LAUNDRY — PAYROLL SUMMARY','','','','','','','','']];
@@ -6121,7 +6121,7 @@ function exportFinanceExcel(){
 
 function exportFinanceCSV(month){
   // Fallback if SheetJS not available
-  var users=getUsers().filter(function(u){return u.status==='active';});
+  var users=getAttendPeople();
   var totalDays=workingDaysInMonth(month);
   var advances=getAdvances().filter(function(a){return a.month===month&&a.status==='approved';});
   var leaves=getLeaves().filter(function(l){return l.month===month&&l.status==='approved';});
@@ -6952,6 +6952,19 @@ var WORK_AREAS=[
 
 function getWorkersData(){return S.get('workers_data')||[];}
 function saveWorkersData(d){S.set('workers_data',d);}
+function getAttendPeople(){
+  // Unify Staff tab workers (no login) with User accounts (have login) so Attendance
+  // tracks everyone, matching the same person-source Leave and Advance already use.
+  var staffList=(getWorkersData()||[]).map(function(w){
+    return {id:w.id,name:w.name,username:w.name,role:w.role||'Worker',status:'active'};
+  });
+  var userList=getUsers().filter(function(u){return u.status==='active';});
+  var seen={};var combined=[];
+  staffList.concat(userList).forEach(function(p){
+    if(!seen[p.id]){seen[p.id]=true;combined.push(p);}
+  });
+  return combined;
+}
 
 function renderStaff(){
   renderSwAreas();
