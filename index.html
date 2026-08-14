@@ -1215,7 +1215,7 @@ function getStaff(){return S.get('staff')||{};}
 function getTimes(){return {...DEFT,...(S.get('times')||{})};}
 
 // ═══ INIT ═════════════════════════════════════════════════════════════════
-window.addEventLdocument.addEventListener('DOMContentLoaded',function(){
+document.addEventListener('DOMContentLoaded',function(){
   // Skip license check for Netlify deployment — access controlled by URL
   // Setup samples if first time
   if(!S.get('customers')){
