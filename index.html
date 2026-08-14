@@ -919,6 +919,9 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 <div class="mbg" id="m-user" onclick="if(event.target===this)closeM('m-user')">
   <div class="modal"><div class="mh"><span id="um-t">Create User</span><button class="mc" onclick="closeM('m-user')">✕</button></div>
     <input type="hidden" id="um-id">
+    <div class="ff"><label class="fl">Link to Staff <span style="font-size:10px;color:var(--muted);font-weight:400;">(optional — for standalone accounts, leave as "None")</span></label>
+      <select class="fs" id="um-staff-link" onchange="onUserStaffLink()"><option value="">— None (standalone account) —</option></select>
+    </div>
     <div class="ff"><label class="fl">Full Name</label><input class="fi" id="um-name" type="text" placeholder="e.g. Dara Sok" maxlength="40"></div>
     <div class="fr">
       <div class="ff"><label class="fl">Username</label><input class="fi" id="um-user" type="text" placeholder="e.g. dara" maxlength="30" autocomplete="off"></div>
@@ -1735,8 +1738,10 @@ function openUserModal(){
   document.getElementById('um-t').textContent='Create User';
   document.getElementById('um-id').value='';
   document.getElementById('um-name').value='';
+  document.getElementById('um-name').readOnly=false;
   document.getElementById('um-user').value='';
   document.getElementById('um-pass').value='';
+  populateUserStaffLink('');
   // Rebuild role select fresh
   var sel=document.getElementById('um-role');
   var me=CU?CU.role:'';
@@ -1752,7 +1757,31 @@ function editU(id){
   document.getElementById('um-t').textContent='Edit User';document.getElementById('um-id').value=id;
   document.getElementById('um-name').value=u.name;document.getElementById('um-user').value=u.username;document.getElementById('um-pass').value='';
   document.getElementById('um-role').value=u.role;
+  populateUserStaffLink(u.linkedStaffId||'');
+  document.getElementById('um-name').readOnly=!!u.linkedStaffId;
   updRole();document.getElementById('m-user').classList.add('on');
+}
+function populateUserStaffLink(selectedId){
+  var sel=document.getElementById('um-staff-link');if(!sel)return;
+  sel.innerHTML='<option value="">— None (standalone account) —</option>';
+  (getWorkersData()||[]).forEach(function(w){
+    var opt=document.createElement('option');
+    opt.value=w.id;
+    opt.textContent=w.name+(w.role?' ('+w.role+')':'');
+    if(w.id===selectedId)opt.selected=true;
+    sel.appendChild(opt);
+  });
+}
+function onUserStaffLink(){
+  var sel=document.getElementById('um-staff-link');
+  var nameEl=document.getElementById('um-name');
+  if(!sel||!nameEl)return;
+  if(sel.value){
+    var w=(getWorkersData()||[]).find(function(x){return x.id===sel.value;});
+    if(w){nameEl.value=w.name;nameEl.readOnly=true;}
+  } else {
+    nameEl.readOnly=false;
+  }
 }
 function updRole(){
   var sel=document.getElementById('um-role');if(!sel)return;
@@ -1771,11 +1800,13 @@ function saveUser(){
   var uname=document.getElementById('um-user').value.trim().toLowerCase();
   var pass=document.getElementById('um-pass').value;
   var role=document.getElementById('um-role').value;
+  var staffLinkEl=document.getElementById('um-staff-link');
+  var linkedStaffId=staffLinkEl?staffLinkEl.value:'';
   if(!name||!uname){toast('Enter name and username',true);return;}
   var id=document.getElementById('um-id').value;
   var allUsers=getUsers();
   if(id){
-    var upd={name:name,role:role};
+    var upd={name:name,role:role,linkedStaffId:linkedStaffId||null};
     if(pass.length>=6)upd.password=pass;else if(pass.length>0){toast('Password min 6 chars',true);return;}
     var stored=S.get('users')||[];var i=stored.findIndex(function(u){return u.id===id;});
     if(i>=0){stored[i]=Object.assign({},stored[i],upd);S.set('users',stored);}
@@ -1785,7 +1816,7 @@ function saveUser(){
     if(allUsers.find(function(u){return u.username===uname;})){toast('Username already taken',true);return;}
     var status=(CU.role==='owner'||CU.role==='admin')?'active':'pending';
     var stored2=S.get('users')||[];
-    stored2.push({id:'u'+Date.now(),name:name,username:uname,password:pass,role:role,status:status,createdBy:CU.username,createdAt:new Date().toISOString()});
+    stored2.push({id:'u'+Date.now(),name:name,username:uname,password:pass,role:role,linkedStaffId:linkedStaffId||null,status:status,createdBy:CU.username,createdAt:new Date().toISOString()});
     S.set('users',stored2);toast('User created — '+(status==='active'?'active':'pending approval'));
   }
   closeM('m-user');renderUsers();
