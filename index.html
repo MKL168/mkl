@@ -4350,14 +4350,14 @@ function renderLeavePanel(){
 
   var wrap=document.getElementById('leave-wrap');if(!wrap)return;
 
-  if(!leaves.length&&!getUsers().length){
+  if(!leaves.length&&!getAttendPeople().length){
     wrap.innerHTML='<div style="text-align:center;padding:30px;color:var(--muted);">No leave records for this month.</div>';
     return;
   }
 
   // Build summary table per worker
   var workerMap={};
-  getUsers().filter(function(u){return u.status==='active';}).forEach(function(u){
+  getAttendPeople().forEach(function(u){
     var nm=u.name||u.username;
     workerMap[nm]={name:nm,role:u.role,dayoff:0,sick:0,gohome:0,personal:0,wedding:0,other:0,total:0,pending:0};
   });
@@ -4565,9 +4565,8 @@ function updateAdvOnBehalfNote(){
   if(!wSel||!pSel){note.textContent='';return;}
   var wid=wSel.value, pid=pSel.value;
   if(!wid||!pid||wid===pid){note.textContent='';return;}
-  var users=getUsers();
-  var worker=users.find(function(u){return u.id===wid;});
-  var preparer=users.find(function(u){return u.id===pid;});
+  var worker=getAttendPeople().find(function(u){return u.id===wid;});
+  var preparer=getUsers().find(function(u){return u.id===pid;});
   if(worker&&preparer){
     note.textContent='📝 '+(preparer.name||preparer.username)+' is submitting this advance on behalf of '+(worker.name||worker.username);
   }
@@ -4995,13 +4994,23 @@ function openOTModal(){
   var sel=document.getElementById('ot-worker');
   if(sel){
     sel.innerHTML='';
-    var users=getUsers()||[];
-    for(var i=0;i<users.length;i++){
-      var u=users[i];
-      var opt=document.createElement('option');
-      opt.value=u.id;opt.textContent=(u.name||u.username)+' ('+u.role+')';
-      if(CU&&u.id===CU.id)opt.selected=true;
-      sel.appendChild(opt);
+    var staffList=getWorkersData()||[];
+    if(staffList.length){
+      staffList.forEach(function(w){
+        var opt=document.createElement('option');
+        opt.value=w.id;
+        opt.textContent=w.name+(w.role?' ('+w.role+')':'');
+        sel.appendChild(opt);
+      });
+    } else {
+      var users=getUsers()||[];
+      for(var i=0;i<users.length;i++){
+        var u=users[i];
+        var opt=document.createElement('option');
+        opt.value=u.id;opt.textContent=(u.name||u.username)+' ('+u.role+')';
+        if(CU&&u.id===CU.id)opt.selected=true;
+        sel.appendChild(opt);
+      }
     }
   }
   var d=document.getElementById('ot-date');if(d)d.value=todayStr();
@@ -5136,12 +5145,22 @@ function openAbsModal(){
   var sel=document.getElementById('abs-worker');
   if(sel){
     sel.innerHTML='';
-    var users=getUsers()||[];
-    for(var i=0;i<users.length;i++){
-      var u=users[i];
-      var opt=document.createElement('option');
-      opt.value=u.id;opt.textContent=(u.name||u.username)+' ('+u.role+')';
-      sel.appendChild(opt);
+    var staffList=getWorkersData()||[];
+    if(staffList.length){
+      staffList.forEach(function(w){
+        var opt=document.createElement('option');
+        opt.value=w.id;
+        opt.textContent=w.name+(w.role?' ('+w.role+')':'');
+        sel.appendChild(opt);
+      });
+    } else {
+      var users=getUsers()||[];
+      for(var i=0;i<users.length;i++){
+        var u=users[i];
+        var opt=document.createElement('option');
+        opt.value=u.id;opt.textContent=(u.name||u.username)+' ('+u.role+')';
+        sel.appendChild(opt);
+      }
     }
   }
   var d=document.getElementById('abs-date');if(d)d.value=todayStr();
@@ -6901,9 +6920,8 @@ function updateOnBehalfNote(){
   if(wid===pid||!wid||!pid){
     note.textContent='';return;
   }
-  var users=getUsers();
-  var worker=users.find(function(u){return u.id===wid;});
-  var prep=users.find(function(u){return u.id===pid;});
+  var worker=getAttendPeople().find(function(u){return u.id===wid;});
+  var prep=getUsers().find(function(u){return u.id===pid;});
   if(worker&&prep){
     note.textContent='📝 '+( prep.name||prep.username)+' is submitting this leave on behalf of '+(worker.name||worker.username);
   }
