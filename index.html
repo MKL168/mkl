@@ -1735,22 +1735,14 @@ function removeUser(uid){
 }
 
 function deleteUserPermanently(uid){
-  console.log('[DEBUG] deleteUserPermanently called with uid:',uid);
-  if(!CU||CU.role!=='owner'){console.log('[DEBUG] blocked - not owner');toast('Owner only',true);return;}
+  if(!CU||CU.role!=='owner'){toast('Owner only',true);return;}
   var users=getUsers();
-  console.log('[DEBUG] users before delete:',users.length);
   var u=users.find(function(x){return x.id===uid;});
-  if(!u){console.log('[DEBUG] user not found for uid:',uid);return;}
-  console.log('[DEBUG] found user, opening confirm dialog for:',u.name||u.username);
-  cfm('Delete Permanently','This will erase '+(u.name||u.username)+'\'s account completely — username, password, and history. This cannot be undone. Continue?',false,function(){
-    console.log('[DEBUG] confirm callback fired');
-    var filtered=users.filter(function(x){return x.id!==uid;});
-    console.log('[DEBUG] users after filter:',filtered.length);
-    S.set('users',filtered);
-    console.log('[DEBUG] saved. getUsers().length now:',getUsers().length);
-    toast('🗑 '+(u.name||u.username)+' permanently deleted');
-    renderUsers();
-  });
+  if(!u)return;
+  if(!confirm('Permanently delete '+(u.name||u.username)+'\'s account?\n\nThis will erase their username, password, and history. This cannot be undone.')){return;}
+  S.set('users',users.filter(function(x){return x.id!==uid;}));
+  toast('🗑 '+(u.name||u.username)+' permanently deleted');
+  renderUsers();
 }
 
 
@@ -2310,11 +2302,10 @@ function wAdv(jid){
 }
 
 function delJob(jid){
-  cfm('Remove Job','Remove this job permanently?',false,function(){
-    S.remove('jobs',jid);
-    toast('Job removed');
-    renderSup();
-  });
+  if(!confirm('Remove this job permanently?')){return;}
+  S.remove('jobs',jid);
+  toast('Job removed');
+  renderSup();
 }
 
 function clearDailyActivity(){
