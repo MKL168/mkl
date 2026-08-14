@@ -1672,7 +1672,7 @@ function renderUsers(){
         html+='<button data-uid="'+u.id+'" onclick="removeUser(this.dataset.uid)" style="padding:3px 8px;background:#ef4444;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;">🗑 Remove</button>';
       } else if(u.status==='removed'){
         html+='<button data-uid="'+u.id+'" onclick="reinstateUser(this.dataset.uid)" style="padding:3px 8px;background:#16a34a;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;">↩ Restore</button>';
-        html+='<button data-uid="'+u.id+'" onclick="deleteUserPermanently(this.dataset.uid)" style="padding:3px 8px;background:#7f1d1d;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;">🗑 Delete Permanently</button>';
+        html+='<button data-action="del-perm" data-uid="'+u.id+'" style="padding:3px 8px;background:#7f1d1d;color:#fff;border:none;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;">🗑 Delete Permanently</button>';
       }
     } else if(isAdmin&&u.role!=='owner'){
       // Admin can act on non-owner accounts only
@@ -1697,6 +1697,32 @@ function renderUsers(){
   // Render login log below
   renderLoginLog();
 }
+
+// Delegated click handler for actions that use data-action (more reliable than
+// inline onclick since it's attached once to the container, not regenerated on every render)
+(function(){
+  var container=document.getElementById('u-list');
+  if(!container||container._delWired)return;
+  container._delWired=true;
+  container.addEventListener('click',function(e){
+    var btn=e.target.closest('[data-action="del-perm"]');
+    if(!btn)return;
+    try{
+      var uid=btn.dataset.uid;
+      if(!CU||CU.role!=='owner'){alert('Owner access required.');return;}
+      var users=getUsers();
+      var u=users.find(function(x){return x.id===uid;});
+      if(!u){alert('User not found (id: '+uid+').');return;}
+      var ok=window.confirm('Permanently delete '+(u.name||u.username)+'\'s account?\n\nThis will erase their username, password, and history. This cannot be undone.');
+      if(!ok)return;
+      S.set('users',users.filter(function(x){return x.id!==uid;}));
+      toast('🗑 '+(u.name||u.username)+' permanently deleted');
+      renderUsers();
+    }catch(err){
+      alert('Delete failed with an error: '+(err&&err.message?err.message:err));
+    }
+  });
+})();
 
 function suspendUser(uid){
   if(!CU||(CU.role!=='admin'&&CU.role!=='owner')){toast('No permission',true);return;}
