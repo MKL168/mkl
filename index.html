@@ -2016,7 +2016,7 @@ function renderJobs(){
   var today=todayStr();
   var jobs=getJobs();
   var list=jobs.filter(function(j){return !j.completed&&!j.archived&&j.date===today;});
-  list.sort(function(a,b){return isOT(b)-isOT(a)||isLate(b)-isLate(a)||(a.num||0)-(b.num||0);});
+  list.sort(function(a,b){return (a.num||0)-(b.num||0);}); // stable order — OT/Late still shown via labels, but rows no longer jump around after each click
 
   // Update chips
   var chipsEl=document.getElementById('j-chips');
@@ -2559,7 +2559,7 @@ function renderWorker(){
     return allJobs.some(function(j){return jStages(j).includes(s.id);});
   });
 
-  allJobs.sort(function(a,b){return isOT(b)-isOT(a)||isLate(b)-isLate(a)||(a.num||0)-(b.num||0);});
+  allJobs.sort(function(a,b){return (a.num||0)-(b.num||0);}); // stable order by job number — OT/Late still shown via labels, but rows no longer jump around after each click
 
   var html='<div style="padding:10px 12px 20px;overflow-x:auto;">';
   html+='<table style="border-collapse:collapse;font-size:11px;min-width:700px;width:100%;">';
