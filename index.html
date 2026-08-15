@@ -1706,8 +1706,9 @@ function renderUsers(){
     }
     html+='</div>';
     html+='</div>';
-   }catch(err){ console.error("renderUsers row error for uid",u&&u.id,err); }
+   }catch(err){ alert('[DEBUG] Row render FAILED for uid '+(u&&u.id)+' status='+(u&&u.status)+': '+(err&&err.message)); }
   });
+  alert('[DEBUG] getUsers() returned '+users.length+' users: '+users.map(function(u){return u.id+'('+u.status+')';}).join(', '));
   html+='</div>';
   el.innerHTML=html;
 
