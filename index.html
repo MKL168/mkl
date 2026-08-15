@@ -1213,7 +1213,7 @@ function markUserDeleted(uid){
 }
 
 function getUsers(){
-  const stored=(S.get('users')||[]).filter(function(u){return u&&u.id&&u.username;}); // guard against malformed/leftover entries
+  const stored=S.get('users')||[];
   const storedMap={};
   stored.forEach(function(u){storedMap[u.id]=u;});
   const all=BUILT_IN_USERS.map(function(b){return storedMap[b.id]||b;});
@@ -1599,8 +1599,6 @@ function playAlrt(){
 
 function renderUsers(){
   var users=getUsers();
-  var w2debug=users.find(function(u){return u.id==='worker2';});
-  if(w2debug)alert('[DEBUG] renderUsers sees worker2 with status: '+w2debug.status);
   var isOwner=CU&&CU.role==='owner';
   var isAdmin=CU&&(CU.role==='admin'||CU.role==='owner');
   var pend=users.filter(function(u){return u.status==='pending';}).length;
@@ -1750,19 +1748,16 @@ function saveUserOverride(uid,patch){
   var stored=S.get('users')||[];
   var i=stored.findIndex(function(x){return x.id===uid;});
   if(i>=0){
-    stored[i]=Object.assign({},stored[i],patch);
-    alert('[DEBUG] Updated existing raw entry for '+uid+'. New status: '+stored[i].status);
+    // Backfill any missing fields (e.g. from an old incomplete record) using the
+    // built-in default as a safety net, so a partial legacy entry heals itself.
+    var fallback=BUILT_IN_USERS.find(function(b){return b.id===uid;})||{};
+    stored[i]=Object.assign({},fallback,stored[i],patch);
   } else {
     var current=getUsers().find(function(x){return x.id===uid;});
-    if(!current){alert('[DEBUG] No current user found for '+uid+' -- aborting save!');return null;}
-    var newEntry=Object.assign({},current,patch);
-    stored.push(newEntry);
-    alert('[DEBUG] Pushed NEW raw entry for '+uid+'. Status: '+newEntry.status+'. Raw array now has '+stored.length+' entries.');
+    if(!current)return null;
+    stored.push(Object.assign({},current,patch));
   }
   S.set('users',stored);
-  var verify=S.get('users')||[];
-  var savedEntry=verify.find(function(x){return x.id===uid;});
-  alert('[DEBUG] After save, re-reading storage directly: '+(savedEntry?('found, status='+savedEntry.status):'NOT FOUND IN STORAGE!'));
   return stored;
 }
 
