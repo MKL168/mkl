@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Maam Ledger">
+<meta name="theme-color" content="#1B4B43">
+<title>Maam Guesthouse — Daily Room Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F6F3EC; --surface:#FFFFFF; --ink:#1C2B27; --ink-soft:#5B6863;
+    --line:#E1DCCE; --teal:#1B4B43; --teal-deep:#123330; --teal-soft:#E4EEEC;
+    --brass:#B4863A; --brass-soft:#F3E7CE; --danger:#A63D40; --danger-soft:#F6E4E3;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans', sans-serif;padding:28px 18px 60px;}
+  .wrap{max-width:1060px;margin:0 auto;}
+  header{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:14px;border-bottom:2px solid var(--teal);padding-bottom:16px;margin-bottom:22px;}
+  .brand-eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--brass);font-weight:600;margin:0 0 4px;}
+  h1{font-family:'Fraunces', serif;font-weight:600;font-size:30px;margin:0;color:var(--teal-deep);letter-spacing:-.01em;}
+  .header-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .role-badge{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--teal-soft);color:var(--teal-deep);padding:6px 12px;border-radius:20px;font-weight:600;letter-spacing:.03em;}
+  .date-control{display:flex;flex-direction:column;gap:4px;align-items:flex-end;}
+  .date-control label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);}
+  input[type="date"], input[type="month"], input[type="password"], input[type="text"], input[type="time"], input[type="number"], select{
+    font-family:'IBM Plex Mono', monospace;font-size:14px;padding:8px 10px;border:1px solid var(--line);
+    border-radius:8px;background:var(--surface);color:var(--ink);
+  }
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:20px;}
+  .card h2{font-family:'Fraunces', serif;font-size:17px;font-weight:600;margin:0 0 16px;color:var(--teal-deep);}
+  .card.accent{border-color:var(--brass);box-shadow:0 0 0 1px var(--brass) inset;}
+  .form-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(120px,1fr));gap:12px;align-items:end;}
+  .field{display:flex;flex-direction:column;gap:5px;}
+  .field label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);}
+  .field input, .field select{font-family:'IBM Plex Sans', sans-serif;font-size:14px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#FDFCFA;color:var(--ink);width:100%;}
+  .field input:focus, .field select:focus{outline:2px solid var(--teal);outline-offset:1px;border-color:var(--teal);}
+  .field.currency input{font-family:'IBM Plex Mono', monospace;}
+  .field .hint{margin-top:2px;}
+  .field.readonly-display{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;color:var(--teal-deep);padding:9px 0;}
+  .btn{font-family:'IBM Plex Sans', sans-serif;font-size:13px;font-weight:600;padding:10px 18px;border-radius:8px;border:none;cursor:pointer;letter-spacing:.01em;}
+  .btn-primary{background:var(--teal);color:#fff;}
+  .btn-primary:hover{background:var(--teal-deep);}
+  .btn-ghost{background:transparent;color:var(--danger);border:1px solid var(--danger-soft);}
+  .btn-ghost:hover{background:var(--danger-soft);}
+  .btn-brass{background:var(--brass);color:#fff;}
+  .btn-brass:hover{background:#96702D;}
+  .btn-outline{background:transparent;color:var(--teal-deep);border:1px solid var(--line);}
+  .btn-outline:hover{background:var(--teal-soft);}
+  .btn-row{margin-top:14px;display:flex;justify-content:flex-end;gap:10px;}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);border-bottom:1px solid var(--line);padding:8px 8px;white-space:nowrap;}
+  tbody td{padding:9px 8px;border-bottom:1px solid var(--line);font-family:'IBM Plex Mono', monospace;white-space:nowrap;}
+  tbody td.txt-cell{font-family:'IBM Plex Sans', sans-serif;}
+  tbody td.room-cell{font-family:'IBM Plex Sans', sans-serif;font-weight:600;}
+  tbody tr:hover{background:var(--bg);}
+  .empty-row td{font-family:'IBM Plex Sans', sans-serif;color:var(--ink-soft);font-style:italic;text-align:center;padding:24px 8px;}
+  .del-btn{background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;border-radius:6px;}
+  .del-btn:hover{background:var(--danger-soft);}
+  .table-scroll{overflow-x:auto;}
+  .summary-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(150px,1fr));gap:12px;}
+  .stat{background:var(--teal-soft);border-radius:8px;padding:14px 16px;border-left:3px solid var(--teal);}
+  .stat.brass{background:var(--brass-soft);border-left-color:var(--brass);}
+  .stat.grand{background:var(--teal-deep);border-left-color:var(--brass);}
+  .stat.grand .stat-value, .stat.grand .stat-label{color:#fff;}
+  .stat-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin-bottom:4px;}
+  .stat-value{font-family:'IBM Plex Mono', monospace;font-size:20px;font-weight:600;color:var(--teal-deep);}
+  .stat.brass .stat-value{color:#7A5A22;}
+  .footer-row{display:flex;justify-content:space-between;align-items:center;margin-top:16px;flex-wrap:wrap;gap:10px;}
+  .hint{font-size:12px;color:var(--ink-soft);}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--teal-deep);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:50;}
+  .toast.show{opacity:1;}
+  .section-title{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--brass);font-weight:600;margin:34px 0 10px;padding-top:10px;border-top:1px solid var(--line);}
+  .section-title:first-of-type{border-top:none;margin-top:0;padding-top:0;}
+  .bill-box{background:var(--bg);border:1px dashed var(--line);border-radius:8px;padding:14px 16px;margin-top:14px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center;}
+  .bill-line{font-size:12.5px;color:var(--ink-soft);}
+  .bill-total{font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:600;color:var(--teal-deep);}
+  .bill-total .khr{font-size:13px;color:var(--brass);font-weight:500;margin-left:8px;}
+  .clockout-btn{background:var(--brass);color:#fff;border:none;padding:7px 14px;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer;}
+  .clockout-btn:hover{background:#96702D;}
+  .segmented{display:flex;gap:8px;}
+  .seg-btn{flex:1;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:#FDFCFA;color:var(--ink);font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;}
+  .seg-btn.active{background:var(--teal);color:#fff;border-color:var(--teal);}
+
+  /* login overlay */
+  .overlay{position:fixed;inset:0;background:var(--teal-deep);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px;}
+  .login-card{background:var(--surface);border-radius:14px;padding:34px 30px;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+  .login-card .brand-eyebrow{margin-bottom:4px;}
+  .login-card h1{font-size:24px;margin-bottom:4px;}
+  .login-card p.sub{color:var(--ink-soft);font-size:13px;margin:0 0 22px;}
+  .login-field{margin-bottom:14px;}
+  .login-field label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin-bottom:6px;}
+  .login-field select, .login-field input{width:100%;padding:11px 12px;font-size:15px;}
+  .login-error{color:var(--danger);font-size:12.5px;margin-top:10px;min-height:16px;}
+  .pin-list{display:grid;gap:10px;margin-top:6px;}
+  .pin-row{display:grid;grid-template-columns:110px 1fr;align-items:center;gap:10px;}
+  .pin-row label{font-size:12.5px;color:var(--ink-soft);}
+  .user-row{display:grid;grid-template-columns:1fr 1fr 32px;gap:8px;align-items:center;}
+  .user-row input{padding:9px 10px;font-size:14px;}
+  .remove-user-btn{background:none;border:1px solid var(--danger-soft);color:var(--danger);border-radius:6px;font-size:16px;line-height:1;cursor:pointer;padding:6px 0;}
+  .remove-user-btn:hover{background:var(--danger-soft);}
+  .add-user-btn{margin-top:4px;}
+  .name-row{display:grid;grid-template-columns:1fr 32px;gap:8px;align-items:center;}
+  .name-row input{padding:9px 10px;font-size:14px;}
+
+  @media (max-width:560px){
+    h1{font-size:24px;} .date-control{align-items:flex-start;} header{flex-direction:column;align-items:flex-start;}
+  }
+</style>
+</head>
+<body>
+
+<div class="overlay" id="loginOverlay">
+  <div class="login-card" id="loginCardInner"></div>
+</div>
+
+<div class="wrap" id="mainApp" style="display:none;">
+
+  <header>
+    <div>
+      <p class="brand-eyebrow">Maam Guesthouse</p>
+      <h1>Daily Room Ledger</h1>
+    </div>
+    <div class="header-right">
+      <span class="role-badge" id="roleBadge">—</span>
+      <button class="btn btn-outline" id="lockBtn">Lock</button>
+      <div class="date-control">
+        <label for="logDate">Date</label>
+        <input type="date" id="logDate">
+      </div>
+    </div>
+  </header>
+
+  <!-- Check-in -->
+  <div class="card">
+    <h2>Check in</h2>
+    <div class="form-grid">
+      <div class="field">
+        <label for="ciRoom">Room</label>
+        <select id="ciRoom"><option value="">Select room</option></select>
+      </div>
+      <div class="field">
+        <label for="ciStaff">Staff</label>
+        <select id="ciStaff"><option value="">Select staff</option></select>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="clockInBtn">Clock in</button>
+    </div>
+  </div>
+
+  <!-- Staff names (admin+) -->
+  <div class="card" id="staffCard" style="display:none;">
+    <h2>Staff names</h2>
+    <p class="hint" style="margin:-8px 0 14px;">Names available in the Staff dropdown at check-in.</p>
+    <div class="pin-list" id="staffNamesContainer"></div>
+    <div class="btn-row"><button class="btn btn-brass" id="saveStaffBtn">Save staff names</button></div>
+  </div>
+
+  <!-- Currently checked in -->
+  <div class="card">
+    <h2>Currently checked in</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Room</th><th>Staff</th><th>Time in</th><th></th><th></th></tr></thead>
+        <tbody id="openBody"><tr class="empty-row"><td colspan="5">No rooms checked in right now.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Checkout / finalize panel -->
+  <div class="card accent" id="checkoutCard" style="display:none;">
+    <h2>Check out — Room <span id="coRoom"></span></h2>
+    <div class="form-grid">
+      <div class="field"><label>Staff</label><div class="field readonly-display" id="coStaff"></div></div>
+      <div class="field"><label>Time in</label><div class="field readonly-display" id="coTimeIn"></div></div>
+      <div class="field"><label>Time out</label><div class="field readonly-display" id="coTimeOut"></div></div>
+      <div class="field">
+        <label for="coWaterQty">Water (bottles)</label>
+        <input type="number" id="coWaterQty" min="0" step="1" placeholder="0">
+      </div>
+      <div class="field">
+        <label for="coDrinkQty">Drink (bottles)</label>
+        <input type="number" id="coDrinkQty" min="0" step="1" placeholder="0">
+      </div>
+      <div class="field currency">
+        <label for="coDamageAmount">Damage / other ($)</label>
+        <input type="number" id="coDamageAmount" min="0" step="0.01" placeholder="0.00">
+      </div>
+      <div class="field">
+        <label for="coDamageNote">Damage reason (optional)</label>
+        <input type="text" id="coDamageNote" placeholder="e.g. broken glass">
+      </div>
+    </div>
+
+    <div class="bill-box">
+      <div class="bill-line" id="coBreakdown"></div>
+      <div class="bill-total">Amount to pay: <span id="coTotalUSD">$0.00</span><span class="khr" id="coTotalKHR">៛0</span></div>
+    </div>
+
+    <div class="form-grid" style="margin-top:16px;">
+      <div class="field">
+        <label>Payment method</label>
+        <div class="segmented" id="coMethodSeg">
+          <button type="button" class="seg-btn" data-value="cash">Cash</button>
+          <button type="button" class="seg-btn" data-value="bank">Bank</button>
+        </div>
+        <input type="hidden" id="coMethod" value="cash">
+      </div>
+      <div class="field">
+        <label>Currency</label>
+        <div class="segmented" id="coCurrencySeg">
+          <button type="button" class="seg-btn" data-value="USD">US$</button>
+          <button type="button" class="seg-btn" data-value="KHR">KHR</button>
+        </div>
+        <input type="hidden" id="coCurrency" value="USD">
+      </div>
+      <div class="field currency">
+        <label for="coAmount">Amount paid</label>
+        <input type="number" id="coAmount" step="0.01" min="0" placeholder="0.00">
+        <span class="hint">Enter what the customer actually hands over</span>
+      </div>
+      <div class="field currency">
+        <label for="coTip">Tip for staff ($)</label>
+        <input type="number" id="coTip" step="0.01" min="0" placeholder="0.00">
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-outline" id="coCancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="coSaveBtn">Save</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 id="roomTableTitle">Rooms</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th>Room</th><th>Staff</th><th>In</th><th>Out</th><th>Room $</th>
+          <th>Water Qty</th><th>Water $</th><th>Drink Qty</th><th>Drink $</th><th>Damage $</th>
+          <th>Total US$</th><th>Total KHR</th><th>Payment</th><th>Tip</th><th></th>
+        </tr></thead>
+        <tbody id="roomBody"><tr class="empty-row"><td colspan="15">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Day summary -->
+  <div class="card" id="daySummaryCard">
+    <h2>Daily Sales Summary</h2>
+    <p class="hint" id="rateNote" style="margin:-10px 0 14px;"></p>
+    <div class="section-title">Charges</div>
+    <div class="summary-grid">
+      <div class="stat"><div class="stat-label">Rooms sold</div><div class="stat-value" id="statRooms">0</div></div>
+      <div class="stat"><div class="stat-label">Room revenue</div><div class="stat-value" id="statRoomRev">$0.00</div></div>
+      <div class="stat brass"><div class="stat-label">Water sold</div><div class="stat-value" id="statWater">0</div></div>
+      <div class="stat brass"><div class="stat-label">Drink sold</div><div class="stat-value" id="statDrink">0</div></div>
+      <div class="stat brass"><div class="stat-label">Damage charges</div><div class="stat-value" id="statDamage">$0.00</div></div>
+      <div class="stat grand"><div class="stat-label">Total sales</div><div class="stat-value" id="statTotalSales">$0.00</div></div>
+    </div>
+    <div class="section-title">Payments received</div>
+    <div class="summary-grid">
+      <div class="stat"><div class="stat-label">Cash US$</div><div class="stat-value" id="statCashUSD">$0.00</div></div>
+      <div class="stat brass"><div class="stat-label">Cash KHR</div><div class="stat-value" id="statCashKHR">៛0</div></div>
+      <div class="stat"><div class="stat-label">Bank US$</div><div class="stat-value" id="statBankUSD">$0.00</div></div>
+      <div class="stat brass"><div class="stat-label">Bank KHR</div><div class="stat-value" id="statBankKHR">៛0</div></div>
+      <div class="stat grand"><div class="stat-label">Total collected (US$ equiv.)</div><div class="stat-value" id="statGrandUSD">$0.00</div></div>
+    </div>
+    <div class="section-title">Tips (kept by staff, not counted as revenue)</div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Staff</th><th>Tips US$</th></tr></thead>
+        <tbody id="statTipsBody"><tr class="empty-row"><td colspan="2">No tips logged for this date yet.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="footer-row" id="resetRow">
+      <span class="hint">Reset clears every room logged for this date. This can't be undone.</span>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline" id="exportDayBtn">Export day (CSV)</button>
+        <button class="btn btn-ghost" id="resetBtn">Reset day</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Month summary -->
+  <div class="card" id="monthSummaryCard">
+    <div class="footer-row" style="margin-top:0;">
+      <h2 style="margin:0;">Month total</h2>
+      <div style="display:flex;align-items:flex-end;gap:14px;">
+        <button class="btn btn-outline" id="exportMonthBtn">Export month (CSV)</button>
+        <div class="date-control"><label for="monthPicker">Month</label><input type="month" id="monthPicker"></div>
+      </div>
+    </div>
+    <div class="section-title" style="margin-top:0;">Charges</div>
+    <div class="summary-grid">
+      <div class="stat"><div class="stat-label">Rooms sold</div><div class="stat-value" id="mStatRooms">0</div></div>
+      <div class="stat"><div class="stat-label">Room revenue</div><div class="stat-value" id="mStatRoomRev">$0.00</div></div>
+      <div class="stat brass"><div class="stat-label">Water sold</div><div class="stat-value" id="mStatWater">0</div></div>
+      <div class="stat brass"><div class="stat-label">Drink sold</div><div class="stat-value" id="mStatDrink">0</div></div>
+      <div class="stat brass"><div class="stat-label">Damage charges</div><div class="stat-value" id="mStatDamage">$0.00</div></div>
+      <div class="stat grand"><div class="stat-label">Total sales</div><div class="stat-value" id="mStatTotalSales">$0.00</div></div>
+    </div>
+    <div class="section-title">Payments received</div>
+    <div class="summary-grid">
+      <div class="stat"><div class="stat-label">Cash US$</div><div class="stat-value" id="mStatCashUSD">$0.00</div></div>
+      <div class="stat brass"><div class="stat-label">Cash KHR</div><div class="stat-value" id="mStatCashKHR">៛0</div></div>
+      <div class="stat"><div class="stat-label">Bank US$</div><div class="stat-value" id="mStatBankUSD">$0.00</div></div>
+      <div class="stat brass"><div class="stat-label">Bank KHR</div><div class="stat-value" id="mStatBankKHR">៛0</div></div>
+      <div class="stat grand"><div class="stat-label">Total collected (US$ equiv.)</div><div class="stat-value" id="mStatGrandUSD">$0.00</div></div>
+    </div>
+    <div class="section-title">Tips (kept by staff, not counted as revenue)</div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Staff</th><th>Tips US$</th></tr></thead>
+        <tbody id="mStatTipsBody"><tr class="empty-row"><td colspan="2">No tips logged this month yet.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Owner settings -->
+  <div class="card" id="ownerCard" style="display:none;">
+    <h2>System settings — owner only</h2>
+    <div class="section-title" style="margin-top:0;">Pricing</div>
+    <div class="form-grid">
+      <div class="field currency"><label>3 Hours ($)</label><input type="number" id="pH3" step="0.01" min="0"></div>
+      <div class="field currency"><label>4 Hours ($)</label><input type="number" id="pH4" step="0.01" min="0"></div>
+      <div class="field currency"><label>5 Hours ($)</label><input type="number" id="pH5" step="0.01" min="0"></div>
+      <div class="field currency"><label>6 Hours ($)</label><input type="number" id="pH6" step="0.01" min="0"></div>
+      <div class="field currency"><label>Overnight ($)</label><input type="number" id="pNight" step="0.01" min="0"></div>
+      <div class="field currency"><label>Water ($)</label><input type="number" id="pWater" step="0.01" min="0"></div>
+      <div class="field currency"><label>Drink ($)</label><input type="number" id="pDrink" step="0.01" min="0"></div>
+      <div class="field currency"><label>Exchange rate (KHR per US$1)</label><input type="number" id="pRate" step="1" min="1"></div>
+    </div>
+    <div class="btn-row"><button class="btn btn-brass" id="savePricesBtn">Save pricing</button></div>
+
+    <div class="section-title">Access PINs</div>
+    <div class="pin-list">
+      <div class="pin-row"><label>Owner PIN</label><input type="password" id="pinOwner" inputmode="numeric"></div>
+      <div class="pin-row"><label>Admin PIN</label><input type="password" id="pinAdmin" inputmode="numeric"></div>
+      <div class="pin-row"><label>Supervisor PIN</label><input type="password" id="pinSupervisor" inputmode="numeric"></div>
+    </div>
+    <div class="section-title">Users</div>
+    <div class="pin-list" id="ownerUsersContainer"></div>
+    <div class="btn-row"><button class="btn btn-brass" id="savePinsBtn">Save PINs</button></div>
+
+    <div class="section-title">Danger zone</div>
+    <p class="hint" style="margin:0 0 10px;">Permanently deletes every room checked out on every date, and clears anyone currently checked in. Pricing, PINs, and staff names are kept.</p>
+    <div class="btn-row" style="justify-content:flex-start;">
+      <button class="btn btn-ghost" id="clearAllBtn">Clear all sales data</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const ROOM_PREFIX = 'maam-entries:';
+const OPEN_KEY = 'maam-open';
+const CONFIG_PRICES_KEY = 'maam-config:prices';
+const CONFIG_PINS_KEY = 'maam-config:pins';
+const CONFIG_STAFF_KEY = 'maam-config:staff';
+
+const ROLE_LEVEL = { user:1, supervisor:2, admin:3, owner:4 };
+const ROLE_LABEL = { user:'User', supervisor:'Supervisor', admin:'Admin', owner:'Owner' };
+let currentRole = null; // in-memory only, resets on reload
+let currentUserName = null; // which named User logged in (User tier only)
+let prices = { h3:8, h4:10, h5:12, h6:15, night:20, water:0.25, drink:3, rate:4200 };
+const DURATION_LABEL = { h3:'3 Hrs', h4:'4 Hrs', h5:'5 Hrs', h6:'6 Hrs', night:'Overnight' };
+
+function localDateOf(d){
+  const off = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - off*60000);
+  return local.toISOString().slice(0,10);
+}
+function todayStr(){ return localDateOf(new Date()); }
+function formatTime(iso){
+  const d = new Date(iso);
+  return d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:false});
+}
+function monthStr(dateStr){ return dateStr.slice(0,7); }
+function escapeHtml(str){
+  if(str==null) return '';
+  return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+function fmtUSD(n){ return '$' + (Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmtKHR(n){ return '៛' + Math.round(Number(n)||0).toLocaleString('en-US'); }
+function usdToKhr(usd){ return Math.round((Number(usd)||0) * prices.rate / 100) * 100; }
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+/* ---------- storage helpers (phone's own browser storage — this page runs standalone, not inside Claude) ---------- */
+function storeGet(key){
+  try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }
+  catch(e){ console.error('storage get failed', e); return null; }
+}
+function storeSet(key, val){
+  try{ localStorage.setItem(key, JSON.stringify(val)); return true; }
+  catch(e){ console.error('storage set failed — device storage may be full', e); return false; }
+}
+function storeDelete(key){
+  try{ localStorage.removeItem(key); return true; }
+  catch(e){ console.error('storage delete failed', e); return false; }
+}
+function storeListByPrefix(prefix){
+  const keys = [];
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(k && k.startsWith(prefix)) keys.push(k);
+  }
+  return keys;
+}
+function getRoomEntries(dateStr){ return storeGet(ROOM_PREFIX+dateStr) || []; }
+function getOpenEntries(){ return storeGet(OPEN_KEY) || []; }
+function setOpenEntries(arr){ return storeSet(OPEN_KEY, arr); }
+
+/* ---------- config: pricing & pins ---------- */
+function loadPrices(){
+  const p = storeGet(CONFIG_PRICES_KEY);
+  if(p) prices = Object.assign({rate:4200}, p);
+  return prices;
+}
+function loadPins(){ return storeGet(CONFIG_PINS_KEY); }
+function loadStaffNames(){ return storeGet(CONFIG_STAFF_KEY) || []; }
+
+/* ---------- login / setup ---------- */
+const loginInner = document.getElementById('loginCardInner');
+
+function renderUserRows(containerEl, users){
+  containerEl.innerHTML = users.map((u,i)=>`
+    <div class="user-row" data-idx="${i}">
+      <input type="text" class="user-name-input" placeholder="Name" value="${escapeHtml(u.name||'')}">
+      <input type="password" class="user-pin-input" inputmode="numeric" placeholder="PIN (min 4 digits)" value="${escapeHtml(u.pin||'')}">
+      <button type="button" class="remove-user-btn" title="Remove">×</button>
+    </div>`).join('') + `<button type="button" class="btn btn-outline add-user-btn">+ Add user</button>`;
+}
+function readUserRows(containerEl){
+  return [...containerEl.querySelectorAll('.user-row')].map(row=>({
+    name: row.querySelector('.user-name-input').value.trim(),
+    pin: row.querySelector('.user-pin-input').value.trim(),
+  }));
+}
+function wireUserRows(containerEl){
+  if(containerEl.dataset.wired) return;
+  containerEl.dataset.wired = '1';
+  containerEl.addEventListener('click', (ev)=>{
+    if(ev.target.classList.contains('remove-user-btn')){
+      const idx = Number(ev.target.closest('.user-row').getAttribute('data-idx'));
+      const current = readUserRows(containerEl);
+      current.splice(idx,1);
+      renderUserRows(containerEl, current);
+    } else if(ev.target.classList.contains('add-user-btn')){
+      const current = readUserRows(containerEl);
+      current.push({name:'', pin:''});
+      renderUserRows(containerEl, current);
+    }
+  });
+}
+
+function renderSetupScreen(){
+  loginInner.innerHTML = `
+    <p class="brand-eyebrow">Maam Guesthouse</p>
+    <h1>First-time setup</h1>
+    <p class="sub">No access PINs exist yet. Set one PIN each for Owner, Admin, and Supervisor, then add each User by name with their own PIN.</p>
+    <div class="pin-list">
+      <div class="pin-row"><label>Owner PIN</label><input type="password" id="setupOwner" inputmode="numeric" placeholder="min 4 digits"></div>
+      <div class="pin-row"><label>Admin PIN</label><input type="password" id="setupAdmin" inputmode="numeric" placeholder="min 4 digits"></div>
+      <div class="pin-row"><label>Supervisor PIN</label><input type="password" id="setupSupervisor" inputmode="numeric" placeholder="min 4 digits"></div>
+    </div>
+    <div class="section-title">Users</div>
+    <div class="pin-list" id="setupUsersContainer"></div>
+    <div class="login-error" id="setupError"></div>
+    <button class="btn btn-primary" id="setupSaveBtn" style="width:100%;margin-top:14px;">Save &amp; sign in as Owner</button>
+  `;
+  const usersContainer = document.getElementById('setupUsersContainer');
+  renderUserRows(usersContainer, [{name:'',pin:''},{name:'',pin:''},{name:'',pin:''}]);
+  wireUserRows(usersContainer);
+  document.getElementById('setupSaveBtn').addEventListener('click', ()=>{
+    const err = document.getElementById('setupError');
+    const owner = document.getElementById('setupOwner').value.trim();
+    const admin = document.getElementById('setupAdmin').value.trim();
+    const supervisor = document.getElementById('setupSupervisor').value.trim();
+    if([owner,admin,supervisor].some(v=>v.length<4)){ err.textContent = 'Owner, Admin, and Supervisor PINs each need at least 4 digits.'; return; }
+    const rawUsers = readUserRows(usersContainer).filter(u=>u.name || u.pin);
+    if(!rawUsers.length){ err.textContent = 'Add at least one user.'; return; }
+    if(rawUsers.some(u=>!u.name || u.pin.length<4)){ err.textContent = 'Each user needs a name and a PIN of at least 4 digits.'; return; }
+    const pins = { owner, admin, supervisor, users: rawUsers };
+    const ok = storeSet(CONFIG_PINS_KEY, pins);
+    if(!ok){ err.textContent = 'Could not save — try again.'; return; }
+    currentRole = 'owner';
+    currentUserName = null;
+    enterApp();
+  });
+}
+
+function renderLoginScreen(){
+  loginInner.innerHTML = `
+    <p class="brand-eyebrow">Maam Guesthouse</p>
+    <h1>Sign in</h1>
+    <p class="sub">Choose your level and enter your PIN.</p>
+    <div class="login-field">
+      <label for="loginRole">Level</label>
+      <select id="loginRole">
+        <option value="user">User</option>
+        <option value="supervisor">Supervisor</option>
+        <option value="admin">Admin</option>
+        <option value="owner">Owner</option>
+      </select>
+    </div>
+    <div class="login-field">
+      <label for="loginPin">PIN</label>
+      <input type="password" id="loginPin" inputmode="numeric" placeholder="Enter PIN">
+    </div>
+    <div class="login-error" id="loginError"></div>
+    <button class="btn btn-primary" id="loginBtn" style="width:100%;">Unlock</button>
+  `;
+  const pinInput = document.getElementById('loginPin');
+  pinInput.addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('loginBtn').click(); });
+  document.getElementById('loginBtn').addEventListener('click', ()=>{
+    const role = document.getElementById('loginRole').value;
+    const pin = pinInput.value.trim();
+    const err = document.getElementById('loginError');
+    const pins = loadPins();
+    if(!pins){ err.textContent = 'Incorrect PIN for that level.'; return; }
+    if(role==='user'){
+      const match = (pins.users||[]).find(u=>u.pin===pin);
+      if(!match){ err.textContent = 'Incorrect PIN for that level.'; return; }
+      currentUserName = match.name;
+    } else {
+      if(pins[role] !== pin){ err.textContent = 'Incorrect PIN for that level.'; return; }
+      currentUserName = null;
+    }
+    currentRole = role;
+    enterApp();
+  });
+}
+
+function initLogin(){
+  const pins = loadPins();
+  if(!pins){ renderSetupScreen(); } else { renderLoginScreen(); }
+}
+
+function applyPermissions(){
+  const lvl = ROLE_LEVEL[currentRole];
+  document.getElementById('roleBadge').textContent = currentUserName ? (ROLE_LABEL[currentRole] + ' — ' + currentUserName) : ROLE_LABEL[currentRole];
+  document.getElementById('daySummaryCard').style.display = lvl>=2 ? '' : 'none';
+  document.getElementById('resetRow').style.display = lvl>=3 ? '' : 'none';
+  document.getElementById('monthSummaryCard').style.display = lvl>=3 ? '' : 'none';
+  document.getElementById('staffCard').style.display = lvl>=3 ? '' : 'none';
+  document.getElementById('ownerCard').style.display = lvl>=4 ? '' : 'none';
+  if(currentUserName){
+    setStaffSelection(currentUserName);
+  }
+}
+
+function enterApp(){
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('mainApp').style.display = '';
+  applyPermissions();
+  boot();
+}
+
+document.getElementById('lockBtn').addEventListener('click', ()=>{
+  currentRole = null;
+  currentUserName = null;
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('loginOverlay').style.display = 'flex';
+  initLogin();
+});
+
+/* ---------- Room dropdown (A–Z) ---------- */
+function populateRoomDropdown(){
+  const sel = document.getElementById('ciRoom');
+  sel.innerHTML = '<option value="">Select room</option>';
+  for(let c=65;c<=90;c++){
+    const letter = String.fromCharCode(c);
+    sel.insertAdjacentHTML('beforeend', `<option value="${letter}">${letter}</option>`);
+  }
+}
+
+/* ---------- Staff dropdown (admin-managed names) ---------- */
+function populateStaffDropdown(){
+  const sel = document.getElementById('ciStaff');
+  const names = loadStaffNames();
+  sel.innerHTML = '<option value="">Select staff</option>' + names.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  if(currentUserName) setStaffSelection(currentUserName);
+}
+function setStaffSelection(name){
+  const sel = document.getElementById('ciStaff');
+  if(![...sel.options].some(o=>o.value===name)){
+    sel.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`);
+  }
+  sel.value = name;
+}
+
+function renderNameRows(containerEl, names){
+  const list = names.length ? names : [''];
+  containerEl.innerHTML = list.map((n,i)=>`
+    <div class="name-row" data-idx="${i}">
+      <input type="text" class="staff-name-input" placeholder="Name" value="${escapeHtml(n)}">
+      <button type="button" class="remove-user-btn" title="Remove">×</button>
+    </div>`).join('') + `<button type="button" class="btn btn-outline add-user-btn">+ Add name</button>`;
+}
+function readNameRows(containerEl){
+  return [...containerEl.querySelectorAll('.staff-name-input')].map(inp=>inp.value.trim()).filter(Boolean);
+}
+function wireNameRows(containerEl){
+  if(containerEl.dataset.wired) return;
+  containerEl.dataset.wired = '1';
+  containerEl.addEventListener('click', ev=>{
+    if(ev.target.classList.contains('remove-user-btn')){
+      const idx = Number(ev.target.closest('.name-row').getAttribute('data-idx'));
+      const current = [...containerEl.querySelectorAll('.staff-name-input')].map(i=>i.value);
+      current.splice(idx,1);
+      renderNameRows(containerEl, current);
+    } else if(ev.target.classList.contains('add-user-btn')){
+      const current = [...containerEl.querySelectorAll('.staff-name-input')].map(i=>i.value);
+      current.push('');
+      renderNameRows(containerEl, current);
+    }
+  });
+}
+function fillStaffCard(){
+  const container = document.getElementById('staffNamesContainer');
+  renderNameRows(container, loadStaffNames());
+  wireNameRows(container);
+}
+function onSaveStaff(){
+  const container = document.getElementById('staffNamesContainer');
+  const names = readNameRows(container);
+  const ok = storeSet(CONFIG_STAFF_KEY, names);
+  if(ok){ populateStaffDropdown(); showToast('Staff names updated'); }
+  else showToast('Could not save — try again');
+}
+document.getElementById('saveStaffBtn').addEventListener('click', onSaveStaff);
+
+/* ---------- check-in ---------- */
+function onClockIn(){
+  const room = document.getElementById('ciRoom').value.trim();
+  if(!room){ showToast('Enter a room number first'); return; }
+  const staff = document.getElementById('ciStaff').value.trim();
+  const entry = { id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), room, staff, timeInISO: new Date().toISOString() };
+  const open = getOpenEntries();
+  open.push(entry);
+  setOpenEntries(open);
+  document.getElementById('ciRoom').value='';
+  if(!currentUserName) document.getElementById('ciStaff').value='';
+  renderOpenTable();
+  showToast('Clocked in — Room ' + room);
+}
+
+function renderOpenTable(){
+  const canRemove = ROLE_LEVEL[currentRole] >= 2;
+  const open = getOpenEntries();
+  const body = document.getElementById('openBody');
+  if(!open.length){ body.innerHTML = '<tr class="empty-row"><td colspan="5">No rooms checked in right now.</td></tr>'; return; }
+  body.innerHTML = open.map(e=>`
+    <tr>
+      <td class="room-cell">${escapeHtml(e.room)}</td>
+      <td class="txt-cell">${escapeHtml(e.staff)||'—'}</td>
+      <td>${formatTime(e.timeInISO)}</td>
+      <td><button class="clockout-btn" data-id="${e.id}">Clock out</button></td>
+      <td>${canRemove?`<button class="del-btn" data-id="${e.id}" title="Remove (mistaken check-in)">×</button>`:''}</td>
+    </tr>`).join('');
+  body.querySelectorAll('.clockout-btn').forEach(b=>b.addEventListener('click', onClockOutClick));
+  if(canRemove) body.querySelectorAll('.del-btn').forEach(b=>b.addEventListener('click', onRemoveOpen));
+}
+
+function onRemoveOpen(ev){
+  const id = ev.currentTarget.getAttribute('data-id');
+  const open = getOpenEntries().filter(e=>e.id!==id);
+  setOpenEntries(open);
+  renderOpenTable();
+}
+
+/* ---------- checkout / finalize ---------- */
+let checkingOut = null;
+
+function onClockOutClick(ev){
+  const id = ev.currentTarget.getAttribute('data-id');
+  const entry = getOpenEntries().find(e=>e.id===id);
+  if(!entry) return;
+  checkingOut = Object.assign({}, entry, { timeOutISO: new Date().toISOString(), waterQty:0, drinkQty:0, damageUSD:0 });
+  showCheckoutPanel();
+}
+
+function showCheckoutPanel(){
+  document.getElementById('checkoutCard').style.display = '';
+  document.getElementById('coRoom').textContent = checkingOut.room;
+  document.getElementById('coStaff').textContent = checkingOut.staff || '—';
+  document.getElementById('coTimeIn').textContent = formatTime(checkingOut.timeInISO);
+  document.getElementById('coTimeOut').textContent = formatTime(checkingOut.timeOutISO);
+  document.getElementById('coWaterQty').value = '';
+  document.getElementById('coDrinkQty').value = '';
+  document.getElementById('coDamageAmount').value = '';
+  document.getElementById('coDamageNote').value = '';
+  setSegValue('coMethodSeg', 'coMethod', 'cash');
+  setSegValue('coCurrencySeg', 'coCurrency', 'USD');
+  document.getElementById('coTip').value = '';
+  recalcCheckoutBill();
+  document.getElementById('checkoutCard').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function recalcCheckoutBill(){
+  if(!checkingOut) return;
+  const hours = (new Date(checkingOut.timeOutISO) - new Date(checkingOut.timeInISO)) / 3600000;
+  const tier = hours<=3?'h3':hours<=4?'h4':hours<=5?'h5':hours<=6?'h6':'night';
+  const roomUSD = prices[tier];
+  const waterQty = parseFloat(document.getElementById('coWaterQty').value)||0;
+  const drinkQty = parseFloat(document.getElementById('coDrinkQty').value)||0;
+  const damageUSD = parseFloat(document.getElementById('coDamageAmount').value)||0;
+  const waterUSD = waterQty * prices.water;
+  const drinkUSD = drinkQty * prices.drink;
+  const totalUSD = roomUSD + waterUSD + drinkUSD + damageUSD;
+  Object.assign(checkingOut, { tier, roomUSD, waterQty, drinkQty, waterUSD, drinkUSD, damageUSD, totalUSD });
+
+  const h = Math.floor(hours), m = Math.round((hours-h)*60);
+  let line = `${h}h ${m}m stay → ${DURATION_LABEL[tier]} ($${roomUSD.toFixed(2)}) · Water $${waterUSD.toFixed(2)} · Drink $${drinkUSD.toFixed(2)}`;
+  if(damageUSD) line += ` · Damage $${damageUSD.toFixed(2)}`;
+  document.getElementById('coBreakdown').textContent = line;
+  document.getElementById('coTotalUSD').textContent = fmtUSD(totalUSD);
+  document.getElementById('coTotalKHR').textContent = '(' + fmtKHR(usdToKhr(totalUSD)) + ')';
+  updateCheckoutAmount();
+}
+function updateCheckoutAmount(){
+  const currency = document.getElementById('coCurrency').value;
+  document.getElementById('coAmount').value = currency==='USD' ? checkingOut.totalUSD.toFixed(2) : usdToKhr(checkingOut.totalUSD);
+  recomputeCoTip();
+}
+function recomputeCoTip(){
+  if(!checkingOut) return;
+  const currency = document.getElementById('coCurrency').value;
+  const amount = parseFloat(document.getElementById('coAmount').value)||0;
+  const totalInCurrency = currency==='USD' ? checkingOut.totalUSD : usdToKhr(checkingOut.totalUSD);
+  const diff = amount - totalInCurrency;
+  const tipInCurrency = diff>0 ? diff : 0;
+  const tipUSD = currency==='USD' ? tipInCurrency : tipInCurrency/prices.rate;
+  document.getElementById('coTip').value = tipUSD ? tipUSD.toFixed(2) : '';
+}
+document.getElementById('coWaterQty').addEventListener('input', recalcCheckoutBill);
+document.getElementById('coDrinkQty').addEventListener('input', recalcCheckoutBill);
+document.getElementById('coDamageAmount').addEventListener('input', recalcCheckoutBill);
+document.getElementById('coAmount').addEventListener('input', recomputeCoTip);
+
+function setSegValue(segId, hiddenId, val){
+  document.getElementById(hiddenId).value = val;
+  document.querySelectorAll('#'+segId+' .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.value===val));
+}
+function wireSegmented(segId, hiddenId, onChange){
+  document.getElementById(segId).addEventListener('click', ev=>{
+    const btn = ev.target.closest('.seg-btn');
+    if(!btn) return;
+    setSegValue(segId, hiddenId, btn.dataset.value);
+    if(onChange) onChange(btn.dataset.value);
+  });
+}
+wireSegmented('coMethodSeg', 'coMethod');
+wireSegmented('coCurrencySeg', 'coCurrency', updateCheckoutAmount);
+
+function onCheckoutCancel(){
+  checkingOut = null;
+  document.getElementById('checkoutCard').style.display = 'none';
+}
+
+function onCheckoutSave(){
+  if(!checkingOut) return;
+  const finalized = {
+    id: checkingOut.id, room: checkingOut.room, staff: checkingOut.staff,
+    timeIn: formatTime(checkingOut.timeInISO), timeOut: formatTime(checkingOut.timeOutISO),
+    tier: checkingOut.tier, roomUSD: checkingOut.roomUSD,
+    waterQty: checkingOut.waterQty, drinkQty: checkingOut.drinkQty,
+    waterUSD: checkingOut.waterUSD, drinkUSD: checkingOut.drinkUSD,
+    damageUSD: checkingOut.damageUSD, damageNote: document.getElementById('coDamageNote').value.trim(),
+    totalUSD: checkingOut.totalUSD,
+    method: document.getElementById('coMethod').value,
+    currency: document.getElementById('coCurrency').value,
+    amount: parseFloat(document.getElementById('coAmount').value)||0,
+    tipUSD: parseFloat(document.getElementById('coTip').value)||0,
+  };
+  const dateStr = localDateOf(new Date(checkingOut.timeInISO));
+  const entries = getRoomEntries(dateStr);
+  entries.push(finalized);
+  const ok = storeSet(ROOM_PREFIX+dateStr, entries);
+  if(!ok){ showToast('Could not save — try again'); return; }
+
+  const open = getOpenEntries().filter(e=>e.id!==checkingOut.id);
+  setOpenEntries(open);
+
+  checkingOut = null;
+  document.getElementById('checkoutCard').style.display = 'none';
+  renderOpenTable();
+  if(logDateEl.value===dateStr) loadDay();
+  if(monthPickerEl.value===monthStr(dateStr)) loadMonth();
+  showToast('Checked out — Room ' + finalized.room);
+}
+document.getElementById('coCancelBtn').addEventListener('click', onCheckoutCancel);
+document.getElementById('coSaveBtn').addEventListener('click', onCheckoutSave);
+document.getElementById('clockInBtn').addEventListener('click', onClockIn);
+
+/* ---------- rendering: completed rooms ---------- */
+function bucketsFromEntries(roomEntries){
+  const b = { cashUSD:0, cashKHR:0, bankUSD:0, bankKHR:0 };
+  roomEntries.forEach(e=>{
+    const key = (e.method==='cash'?'cash':'bank') + (e.currency==='KHR'?'KHR':'USD');
+    b[key] += Number(e.amount)||0;
+  });
+  return b;
+}
+function paymentBoth(e){
+  const amount = Number(e.amount)||0;
+  const paidUSD = e.currency==='USD' ? amount : amount/prices.rate;
+  const paidKHR = e.currency==='KHR' ? amount : usdToKhr(amount);
+  return { paidUSD, paidKHR, methodLabel: e.method==='cash' ? 'Cash' : 'Bank' };
+}
+function paidLabel(e){
+  const p = paymentBoth(e);
+  return `${p.methodLabel} — ${fmtUSD(p.paidUSD)} / ${fmtKHR(p.paidKHR)}`;
+}
+
+function renderRoomTable(entries){
+  const canDelete = ROLE_LEVEL[currentRole] >= 2;
+  const body = document.getElementById('roomBody');
+  if(!entries.length){ body.innerHTML = '<tr class="empty-row"><td colspan="15">No rooms checked out for this date yet.</td></tr>'; return; }
+  body.innerHTML = entries.map(e=>`
+    <tr>
+      <td class="room-cell">${escapeHtml(e.room)}</td>
+      <td class="txt-cell">${escapeHtml(e.staff)||'—'}</td>
+      <td>${e.timeIn||'—'}</td><td>${e.timeOut||'—'}</td>
+      <td>${fmtUSD(e.roomUSD)}</td>
+      <td>${e.waterQty||0}</td><td>${fmtUSD(e.waterUSD||0)}</td>
+      <td>${e.drinkQty||0}</td><td>${fmtUSD(e.drinkUSD||0)}</td>
+      <td>${e.damageUSD?fmtUSD(e.damageUSD):'—'}</td>
+      <td>${fmtUSD(e.totalUSD)}</td>
+      <td>${fmtKHR(usdToKhr(e.totalUSD))}</td>
+      <td class="txt-cell">${paidLabel(e)}</td>
+      <td>${e.tipUSD?fmtUSD(e.tipUSD):'—'}</td>
+      <td>${canDelete?`<button class="del-btn" data-id="${e.id}" title="Delete">×</button>`:''}</td>
+    </tr>`).join('');
+  if(canDelete) body.querySelectorAll('.del-btn').forEach(b=>b.addEventListener('click', onDeleteEntry));
+}
+function tipsByStaff(roomEntries){
+  const map = {};
+  roomEntries.forEach(e=>{
+    const tip = Number(e.tipUSD)||0;
+    if(!tip) return;
+    const name = e.staff && e.staff.trim() ? e.staff.trim() : 'Unassigned';
+    map[name] = (map[name]||0) + tip;
+  });
+  return Object.entries(map).sort((a,b)=>b[1]-a[1]);
+}
+function renderTipsTable(bodyId, roomEntries){
+  const rows = tipsByStaff(roomEntries);
+  const body = document.getElementById(bodyId);
+  if(!rows.length){ body.innerHTML = `<tr class="empty-row"><td colspan="2">No tips logged ${bodyId==='statTipsBody'?'for this date':'this month'} yet.</td></tr>`; return; }
+  body.innerHTML = rows.map(([name,total])=>`<tr><td class="txt-cell">${escapeHtml(name)}</td><td>${fmtUSD(total)}</td></tr>`).join('');
+}
+
+function computeSummary(entries){
+  const roomRev = entries.reduce((s,e)=>s+(Number(e.roomUSD)||0),0);
+  const waterQty = entries.reduce((s,e)=>s+(Number(e.waterQty)||0),0);
+  const waterRev = entries.reduce((s,e)=>s+(Number(e.waterUSD)||0),0);
+  const drinkQty = entries.reduce((s,e)=>s+(Number(e.drinkQty)||0),0);
+  const drinkRev = entries.reduce((s,e)=>s+(Number(e.drinkUSD)||0),0);
+  const damageRev = entries.reduce((s,e)=>s+(Number(e.damageUSD)||0),0);
+  const totalSales = roomRev + waterRev + drinkRev + damageRev;
+  const b = bucketsFromEntries(entries);
+  const grandUSD = b.cashUSD + b.bankUSD + (b.cashKHR+b.bankKHR)/prices.rate;
+  const tips = tipsByStaff(entries);
+  return { rooms: entries.length, roomRev, waterQty, waterRev, drinkQty, drinkRev, damageRev, totalSales,
+    cashUSD:b.cashUSD, cashKHR:b.cashKHR, bankUSD:b.bankUSD, bankKHR:b.bankKHR, grandUSD, tips };
+}
+
+function renderDaySummary(roomEntries){
+  const s = computeSummary(roomEntries);
+  document.getElementById('rateNote').textContent = `Exchange rate in use: ៛${prices.rate.toLocaleString('en-US')} per US$1`;
+  document.getElementById('statRooms').textContent = s.rooms;
+  document.getElementById('statRoomRev').textContent = fmtUSD(s.roomRev);
+  document.getElementById('statWater').textContent = `${s.waterQty} (${fmtUSD(s.waterRev)})`;
+  document.getElementById('statDrink').textContent = `${s.drinkQty} (${fmtUSD(s.drinkRev)})`;
+  document.getElementById('statDamage').textContent = fmtUSD(s.damageRev);
+  document.getElementById('statTotalSales').textContent = fmtUSD(s.totalSales);
+  document.getElementById('statCashUSD').textContent = fmtUSD(s.cashUSD);
+  document.getElementById('statCashKHR').textContent = fmtKHR(s.cashKHR);
+  document.getElementById('statBankUSD').textContent = fmtUSD(s.bankUSD);
+  document.getElementById('statBankKHR').textContent = fmtKHR(s.bankKHR);
+  document.getElementById('statGrandUSD').textContent = fmtUSD(s.grandUSD);
+  renderTipsTable('statTipsBody', roomEntries);
+}
+
+const logDateEl = document.getElementById('logDate');
+const monthPickerEl = document.getElementById('monthPicker');
+
+function loadDay(){
+  const dateStr = logDateEl.value;
+  document.getElementById('roomTableTitle').textContent = 'Rooms — ' + dateStr;
+  const rooms = getRoomEntries(dateStr);
+  renderRoomTable(rooms);
+  renderDaySummary(rooms);
+}
+
+function loadMonth(){
+  if(ROLE_LEVEL[currentRole] < 3) return;
+  const ym = monthPickerEl.value;
+  const roomKeys = storeListByPrefix(ROOM_PREFIX+ym);
+  let allRooms = [];
+  roomKeys.forEach(k=>{ const e = storeGet(k); if(e) allRooms = allRooms.concat(e); });
+
+  const s = computeSummary(allRooms);
+  document.getElementById('mStatRooms').textContent = s.rooms;
+  document.getElementById('mStatRoomRev').textContent = fmtUSD(s.roomRev);
+  document.getElementById('mStatWater').textContent = `${s.waterQty} (${fmtUSD(s.waterRev)})`;
+  document.getElementById('mStatDrink').textContent = `${s.drinkQty} (${fmtUSD(s.drinkRev)})`;
+  document.getElementById('mStatDamage').textContent = fmtUSD(s.damageRev);
+  document.getElementById('mStatTotalSales').textContent = fmtUSD(s.totalSales);
+  document.getElementById('mStatCashUSD').textContent = fmtUSD(s.cashUSD);
+  document.getElementById('mStatCashKHR').textContent = fmtKHR(s.cashKHR);
+  document.getElementById('mStatBankUSD').textContent = fmtUSD(s.bankUSD);
+  document.getElementById('mStatBankKHR').textContent = fmtKHR(s.bankKHR);
+  document.getElementById('mStatGrandUSD').textContent = fmtUSD(s.grandUSD);
+  renderTipsTable('mStatTipsBody', allRooms);
+}
+
+function onDeleteEntry(ev){
+  const id = ev.currentTarget.getAttribute('data-id');
+  const dateStr = logDateEl.value;
+  let entries = getRoomEntries(dateStr).filter(e=>e.id!==id);
+  const ok = storeSet(ROOM_PREFIX+dateStr, entries);
+  if(ok){ loadDay(); if(monthPickerEl.value===monthStr(dateStr)) loadMonth(); }
+}
+
+function onResetDay(){
+  const dateStr = logDateEl.value;
+  if(!confirm(`Clear every room logged for ${dateStr}? This cannot be undone.`)) return;
+  storeDelete(ROOM_PREFIX+dateStr);
+  loadDay();
+  if(monthPickerEl.value===monthStr(dateStr)) loadMonth();
+  showToast('Day reset');
+}
+document.getElementById('resetBtn').addEventListener('click', onResetDay);
+
+/* ---------- owner settings ---------- */
+function fillOwnerForm(){
+  document.getElementById('pH3').value = prices.h3;
+  document.getElementById('pH4').value = prices.h4;
+  document.getElementById('pH5').value = prices.h5;
+  document.getElementById('pH6').value = prices.h6;
+  document.getElementById('pNight').value = prices.night;
+  document.getElementById('pWater').value = prices.water;
+  document.getElementById('pDrink').value = prices.drink;
+  document.getElementById('pRate').value = prices.rate;
+  const pins = loadPins() || {};
+  document.getElementById('pinOwner').value = pins.owner || '';
+  document.getElementById('pinAdmin').value = pins.admin || '';
+  document.getElementById('pinSupervisor').value = pins.supervisor || '';
+  const usersContainer = document.getElementById('ownerUsersContainer');
+  renderUserRows(usersContainer, (pins.users && pins.users.length) ? pins.users : [{name:'',pin:''}]);
+  wireUserRows(usersContainer);
+}
+function onSavePrices(){
+  const next = {
+    h3: parseFloat(document.getElementById('pH3').value)||0,
+    h4: parseFloat(document.getElementById('pH4').value)||0,
+    h5: parseFloat(document.getElementById('pH5').value)||0,
+    h6: parseFloat(document.getElementById('pH6').value)||0,
+    night: parseFloat(document.getElementById('pNight').value)||0,
+    water: parseFloat(document.getElementById('pWater').value)||0,
+    drink: parseFloat(document.getElementById('pDrink').value)||0,
+    rate: parseFloat(document.getElementById('pRate').value)||4200,
+  };
+  const ok = storeSet(CONFIG_PRICES_KEY, next);
+  if(ok){ prices = next; loadDay(); showToast('Pricing updated'); }
+  else showToast('Could not save — try again');
+}
+function onSavePins(){
+  const owner = document.getElementById('pinOwner').value.trim();
+  const admin = document.getElementById('pinAdmin').value.trim();
+  const supervisor = document.getElementById('pinSupervisor').value.trim();
+  if([owner,admin,supervisor].some(v=>v.length<4)){ showToast('Owner, Admin, and Supervisor PINs each need at least 4 digits'); return; }
+  const usersContainer = document.getElementById('ownerUsersContainer');
+  const rawUsers = readUserRows(usersContainer).filter(u=>u.name || u.pin);
+  if(!rawUsers.length){ showToast('Add at least one user'); return; }
+  if(rawUsers.some(u=>!u.name || u.pin.length<4)){ showToast('Each user needs a name and a PIN of at least 4 digits'); return; }
+  const ok = storeSet(CONFIG_PINS_KEY, { owner, admin, supervisor, users: rawUsers });
+  if(ok) showToast('PINs updated'); else showToast('Could not save — try again');
+}
+document.getElementById('savePricesBtn').addEventListener('click', onSavePrices);
+document.getElementById('savePinsBtn').addEventListener('click', onSavePins);
+
+function onClearAllSales(){
+  const roomKeys = storeListByPrefix(ROOM_PREFIX);
+  if(!roomKeys.length && !getOpenEntries().length){ showToast('There is no sales data to clear'); return; }
+  if(!confirm(`This will permanently delete all ${roomKeys.length} day(s) of room records and anyone currently checked in, on this phone. Pricing, PINs, and staff names will be kept. This cannot be undone. Continue?`)) return;
+  roomKeys.forEach(k=>storeDelete(k));
+  setOpenEntries([]);
+  renderOpenTable();
+  loadDay();
+  loadMonth();
+  showToast('All sales data cleared');
+}
+document.getElementById('clearAllBtn').addEventListener('click', onClearAllSales);
+
+/* ---------- CSV export (backup) ---------- */
+function toCsv(rows){
+  return rows.map(row => row.map(cell=>{
+    const s = String(cell==null?'':cell);
+    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }).join(',')).join('\r\n');
+}
+function downloadCsv(filename, csvText){
+  const blob = new Blob([csvText], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function totalsRows(s){
+  const rows = [[]];
+  rows.push(['TOTALS']);
+  rows.push(['Rooms Sold', s.rooms]);
+  rows.push(['Room Revenue US$', s.roomRev.toFixed(2)]);
+  rows.push(['Water Sold Qty', s.waterQty]);
+  rows.push(['Water Revenue US$', s.waterRev.toFixed(2)]);
+  rows.push(['Drink Sold Qty', s.drinkQty]);
+  rows.push(['Drink Revenue US$', s.drinkRev.toFixed(2)]);
+  rows.push(['Damage Charges US$', s.damageRev.toFixed(2)]);
+  rows.push(['Total Sales US$', s.totalSales.toFixed(2)]);
+  rows.push([]);
+  rows.push(['Cash US$', s.cashUSD.toFixed(2)]);
+  rows.push(['Cash KHR', s.cashKHR]);
+  rows.push(['Bank US$', s.bankUSD.toFixed(2)]);
+  rows.push(['Bank KHR', s.bankKHR]);
+  rows.push(['Total Collected (US$ equiv.)', s.grandUSD.toFixed(2)]);
+  rows.push([]);
+  rows.push(['TIPS BY STAFF']);
+  rows.push(['Staff','Tips US$']);
+  if(s.tips.length) s.tips.forEach(([name,total])=>rows.push([name, total.toFixed(2)]));
+  else rows.push(['(none)', '0.00']);
+  return rows;
+}
+function onExportDay(){
+  const dateStr = logDateEl.value;
+  const rooms = getRoomEntries(dateStr);
+  const rows = [['Maam Guesthouse — Day Export', dateStr], []];
+  rows.push(['Room','Staff','Time In','Time Out','Room Charge $','Water Qty','Water $','Drink Qty','Drink $','Damage $','Damage Reason','Total US$','Total KHR','Method','Paid US$','Paid KHR','Tip US$']);
+  rooms.forEach(e=>{
+    const p = paymentBoth(e);
+    rows.push([e.room, e.staff, e.timeIn, e.timeOut, e.roomUSD, e.waterQty, e.waterUSD||0, e.drinkQty, e.drinkUSD||0, e.damageUSD||0, e.damageNote, e.totalUSD, usdToKhr(e.totalUSD), p.methodLabel, p.paidUSD.toFixed(2), p.paidKHR, e.tipUSD||0]);
+  });
+  rows.push(...totalsRows(computeSummary(rooms)));
+  downloadCsv(`maam-day-${dateStr}.csv`, toCsv(rows));
+}
+function onExportMonth(){
+  const ym = monthPickerEl.value;
+  const roomKeys = storeListByPrefix(ROOM_PREFIX+ym).sort();
+  const rows = [['Maam Guesthouse — Month Export', ym], []];
+  rows.push(['Date','Room','Staff','Time In','Time Out','Room Charge $','Water Qty','Water $','Drink Qty','Drink $','Damage $','Damage Reason','Total US$','Total KHR','Method','Paid US$','Paid KHR','Tip US$']);
+  let allRooms = [];
+  roomKeys.forEach(key=>{
+    const d = key.slice(ROOM_PREFIX.length);
+    const entries = storeGet(key)||[];
+    allRooms = allRooms.concat(entries);
+    entries.forEach(e=>{
+      const p = paymentBoth(e);
+      rows.push([d, e.room, e.staff, e.timeIn, e.timeOut, e.roomUSD, e.waterQty, e.waterUSD||0, e.drinkQty, e.drinkUSD||0, e.damageUSD||0, e.damageNote, e.totalUSD, usdToKhr(e.totalUSD), p.methodLabel, p.paidUSD.toFixed(2), p.paidKHR, e.tipUSD||0]);
+    });
+  });
+  rows.push(...totalsRows(computeSummary(allRooms)));
+  downloadCsv(`maam-month-${ym}.csv`, toCsv(rows));
+}
+document.getElementById('exportDayBtn').addEventListener('click', onExportDay);
+document.getElementById('exportMonthBtn').addEventListener('click', onExportMonth);
+
+logDateEl.addEventListener('change', loadDay);
+monthPickerEl.addEventListener('change', loadMonth);
+
+function boot(){
+  logDateEl.value = todayStr();
+  monthPickerEl.value = todayStr().slice(0,7);
+  loadPrices();
+  populateRoomDropdown();
+  populateStaffDropdown();
+  if(ROLE_LEVEL[currentRole]>=3) fillStaffCard();
+  if(ROLE_LEVEL[currentRole]>=4) fillOwnerForm();
+  renderOpenTable();
+  loadDay();
+  if(ROLE_LEVEL[currentRole]>=3) loadMonth();
+}
+
+initLogin();
+</script>
+</body>
+</html>
