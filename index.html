@@ -342,6 +342,22 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
   <div class="llink" onclick="showPage('pg-login')" style="margin-top:10px;">← Back</div>
 </div>
 
+<!-- DEVICE APPROVAL WAIT SCREEN -->
+<div id="pg-device-wait" class="page" style="background:#1a1d23;display:flex;align-items:center;justify-content:center;padding:20px;">
+  <div class="lcard" style="text-align:center;">
+    <div style="font-size:38px;margin-bottom:6px;">🔒</div>
+    <h1 style="font-size:16px;font-weight:700;color:#fff;margin-bottom:4px;">Waiting for Approval</h1>
+    <div style="font-size:12px;color:#9ca3af;line-height:1.6;margin-top:10px;">
+      This device isn't approved yet for<br>
+      <span id="dw-name" style="color:#fff;font-weight:700;">—</span><br>
+      Device: <span id="dw-device" style="color:#fff;">—</span>
+    </div>
+    <div style="font-size:11px;color:#6b7280;margin-top:14px;">The Owner has been notified. This screen will continue automatically once approved.</div>
+    <div id="dw-msg" style="font-size:12px;font-weight:700;margin-top:12px;min-height:16px;"></div>
+    <div class="llink" onclick="cancelDeviceWait()" style="margin-top:14px;">← Back to login</div>
+  </div>
+</div>
+
 <!-- SUPERVISOR -->
 <div id="pg-sup" class="page">
   <div class="topbar">
@@ -452,10 +468,21 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
       <button class="tb" onclick="uTab('act',this)">✅ Active</button>
       <button class="tb" onclick="uTab('sus',this)">🔴 Suspended</button>
       <button class="tb" onclick="uTab('all',this)">All</button>
+      <button class="tb" onclick="uTab('dev',this)">🔒 Devices</button>
     </div>
     <div class="chips" style="padding:9px 12px 0;" id="u-chips"></div>
     <div class="sec-t" id="u-title">Pending</div>
     <div class="ucards" id="u-list" style="padding-top:0;"></div>
+  <!-- Device Approvals -->
+  <div class="box" style="margin-top:12px;" id="device-approvals-box">
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px;">🔒 Device Approvals</div>
+    <div id="device-approvals-list"></div>
+  </div>
+  <!-- Device Management -->
+  <div class="box" style="margin-top:12px;" id="device-mgmt-box">
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px;">📱 Approved Devices</div>
+    <div id="device-mgmt-list"></div>
+  </div>
   <!-- Backup System -->
   <div class="box" style="margin-top:12px;" id="backup-box">
     <div style="font-size:13px;font-weight:700;margin-bottom:10px;">💾 Data Backup</div>
@@ -1129,7 +1156,7 @@ const firebaseConfig={
 // Every business-data key gets mirrored. 'session' and 'license' are
 // intentionally excluded — those are per-device/local-only by design.
 const SYNC_KEYS=['absences','advances','boiler_history','boiler_log','boiler_settings','boiler_warnings',
-  'clean_log','clean_settings','counter','customers','dayoffs','deleted_user_ids','done','expenses',
+  'clean_log','clean_settings','counter','customers','dayoffs','deleted_user_ids','device_requests','done','expenses',
   'generated_keys','issues','jobs','last_backup','leaves','login_log','ops_history','ops_log','ops_settings',
   'ot_records','ot_schedules','perf_appeals','perf_log','simple_jobs','staff','times','users','violations','workers_data'];
 let fbDB=null, fbReady=false;
@@ -1333,6 +1360,247 @@ function getIssues(){return S.get('issues')||[];}
 function getStaff(){return S.get('staff')||{};}
 function getTimes(){return {...DEFT,...(S.get('times')||{})};}
 
+// ═══ DEVICE APPROVAL / TELEGRAM SECURITY LAYER ══════════════════════════════
+// Same feature set as the MKL Billing System, reusing the same Firebase project
+// (mkl-ms2) and the same Telegram bot. Device-request data lives under the
+// existing '/data' root-level path (device_requests key), synced the same way
+// as everything else in this app.
+const TG_BOT_TOKEN='8559538564:AAElo8HijofGtNpahW0jKmsorxsHX0wCDuA';
+const TG_CHAT_ID='557250522';
+function tgSend(msg){
+  try{
+    fetch('https://api.telegram.org/bot'+TG_BOT_TOKEN+'/sendMessage',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({chat_id:TG_CHAT_ID,text:'MKL Management System — '+msg}),
+      keepalive:true
+    }).catch(function(){});
+  }catch(e){}
+}
+function tgNow(){
+  var d=new Date();
+  return d.toLocaleString('en-US',{hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+// Each browser/device gets a persistent random id (kept out of SYNC_KEYS — local only).
+function getDeviceId(){
+  var id=localStorage.getItem('ml_device_id');
+  if(!id){
+    id='dev_'+Date.now().toString(36)+'_'+Math.random().toString(36).substring(2,10);
+    localStorage.setItem('ml_device_id',id);
+  }
+  return id;
+}
+function getDeviceLabel(){
+  var ua=navigator.userAgent||'';
+  var browser='Browser';
+  if(/Edg\//.test(ua))browser='Edge';
+  else if(/OPR\//.test(ua)||/Opera/.test(ua))browser='Opera';
+  else if(/CriOS/.test(ua)||(/Chrome\//.test(ua)&&!/Chromium/.test(ua)))browser='Chrome';
+  else if(/FxiOS/.test(ua)||/Firefox\//.test(ua))browser='Firefox';
+  else if(/Safari\//.test(ua)&&!/Chrome/.test(ua))browser='Safari';
+  var os='Unknown OS';
+  if(/Windows/.test(ua))os='Windows';
+  else if(/Android/.test(ua))os='Android';
+  else if(/iPhone|iPad|iPod/.test(ua))os='iOS';
+  else if(/Mac OS X/.test(ua))os='Mac';
+  else if(/Linux/.test(ua))os='Linux';
+  return browser+' on '+os;
+}
+function userHasApprovedDevice(user,deviceId){
+  var devices=(user&&user.devices)||[];
+  return !!devices.find(function(d){return d.id===deviceId;});
+}
+function findDeviceRequest(userId,deviceId){
+  var reqs=S.get('device_requests')||[];
+  var mine=reqs.filter(function(r){return r.userId===userId&&r.deviceId===deviceId;});
+  if(!mine.length)return null;
+  mine.sort(function(a,b){return new Date(b.requestedAt)-new Date(a.requestedAt);});
+  return mine[0];
+}
+
+// ── Login gate: called instead of completing login when role!=='owner' and the
+// current device isn't on that user's approved list yet ──
+let _devWaitPoll=null,_devWaitCtx=null;
+function gateDeviceLogin(user,deviceId,deviceLabel,loginType){
+  var existing=findDeviceRequest(user.id,deviceId);
+  var req;
+  if(existing&&existing.status==='pending'){
+    req=existing;
+  } else {
+    req={id:'dreq_'+Date.now().toString(36)+Math.random().toString(36).substring(2,7),
+      userId:user.id,username:user.username,name:user.name||user.username,role:user.role,
+      deviceId:deviceId,deviceLabel:deviceLabel,requestedAt:new Date().toISOString(),status:'pending'};
+    var reqs=S.get('device_requests')||[];
+    reqs.push(req);
+    if(reqs.length>300)reqs=reqs.slice(-300);
+    S.set('device_requests',reqs);
+    tgSend('🔒 New device login request\nName: '+req.name+' ('+(RL[req.role]||req.role)+')\nDevice: '+req.deviceLabel+'\nTime: '+tgNow());
+  }
+  _devWaitCtx={user:user,req:req,loginType:loginType};
+  showDeviceWaitPage();
+}
+function showDeviceWaitPage(){
+  var ctx=_devWaitCtx;if(!ctx)return;
+  document.getElementById('dw-name').textContent=ctx.user.name||ctx.user.username;
+  document.getElementById('dw-device').textContent=ctx.req.deviceLabel;
+  var msgEl=document.getElementById('dw-msg');msgEl.textContent='';msgEl.style.color='var(--muted)';
+  showPage('pg-device-wait');
+  if(_devWaitPoll)clearInterval(_devWaitPoll);
+  _devWaitPoll=setInterval(pollDeviceWait,3000);
+  pollDeviceWait();
+}
+function pollDeviceWait(){
+  var ctx=_devWaitCtx;if(!ctx)return;
+  var reqs=S.get('device_requests')||[];
+  var fresh=reqs.find(function(r){return r.id===ctx.req.id;});
+  if(!fresh)return;
+  if(fresh.status==='approved'){
+    clearInterval(_devWaitPoll);_devWaitPoll=null;
+    var loginType=ctx.loginType,user=ctx.user;
+    _devWaitCtx=null;
+    if(loginType==='worker'){CU=user;S.set('session',{userId:user.id});startWorker();}
+    else{completeSupervisorLogin(user);}
+  } else if(fresh.status==='rejected'){
+    clearInterval(_devWaitPoll);_devWaitPoll=null;
+    var msgEl=document.getElementById('dw-msg');
+    msgEl.textContent='Your device login request was rejected by the Owner.';
+    msgEl.style.color='#ef4444';
+  }
+}
+function cancelDeviceWait(){
+  if(_devWaitPoll)clearInterval(_devWaitPoll);_devWaitPoll=null;_devWaitCtx=null;
+  showPage('pg-login');
+}
+function completeSupervisorLogin(user){
+  CU=user;
+  var log=S.get('login_log')||[];
+  var dev=navigator.userAgent.substring(0,80);
+  log.push({userId:user.id,username:user.username,name:user.name||user.username,
+    role:user.role,loginAt:new Date().toISOString(),type:'supervisor',device:dev});
+  if(log.length>200)log=log.slice(-200);
+  S.set('login_log',log);
+  S.set('session',{userId:user.id,loginAt:new Date().toISOString()});
+  enterApp();
+}
+
+// ── Owner: approve / reject a pending device request ──
+function approveDeviceRequest(reqId){
+  if(!CU||CU.role!=='owner'){toast('Owner only',true);return;}
+  var reqs=S.get('device_requests')||[];
+  var req=reqs.find(function(r){return r.id===reqId;});
+  if(!req||req.status!=='pending')return;
+  req.status='approved';req.resolvedAt=new Date().toISOString();req.resolvedBy=CU.name||CU.username;
+  S.set('device_requests',reqs);
+  var current=getUsers().find(function(x){return x.id===req.userId;})||{};
+  var devices=(current.devices||[]).slice();
+  if(!devices.find(function(d){return d.id===req.deviceId;})){
+    devices.push({id:req.deviceId,label:req.deviceLabel,approvedAt:new Date().toISOString()});
+  }
+  saveUserOverride(req.userId,{devices:devices});
+  tgSend('✅ Device approved\nName: '+req.name+'\nDevice: '+req.deviceLabel+'\nApproved by: '+(CU.name||CU.username)+'\nTime: '+tgNow());
+  toast('✅ Device approved for '+req.name);
+  renderDeviceApprovals();renderDeviceManagement();renderUsers();
+}
+function rejectDeviceRequest(reqId){
+  if(!CU||CU.role!=='owner'){toast('Owner only',true);return;}
+  var reqs=S.get('device_requests')||[];
+  var req=reqs.find(function(r){return r.id===reqId;});
+  if(!req||req.status!=='pending')return;
+  if(!confirm('Reject this device login request from '+req.name+'?'))return;
+  req.status='rejected';req.resolvedAt=new Date().toISOString();req.resolvedBy=CU.name||CU.username;
+  S.set('device_requests',reqs);
+  tgSend('🚫 Device request rejected\nName: '+req.name+'\nDevice: '+req.deviceLabel+'\nRejected by: '+(CU.name||CU.username)+'\nTime: '+tgNow());
+  toast('🚫 Device request rejected');
+  renderDeviceApprovals();
+}
+function removeUserDevice(uid,deviceId){
+  if(!CU||CU.role!=='owner'){toast('Owner only',true);return;}
+  var user=getUsers().find(function(x){return x.id===uid;});
+  if(!user)return;
+  var dev=(user.devices||[]).find(function(d){return d.id===deviceId;});
+  if(!dev)return;
+  if(!confirm('Remove device "'+dev.label+'" from '+(user.name||user.username)+'?\n\nThey will be signed out automatically within seconds if currently logged in on it.'))return;
+  var devices=(user.devices||[]).filter(function(d){return d.id!==deviceId;});
+  saveUserOverride(uid,{devices:devices});
+  tgSend('🗑 Device removed\nName: '+(user.name||user.username)+'\nDevice: '+dev.label+'\nRemoved by: '+(CU.name||CU.username)+'\nTime: '+tgNow());
+  toast('🗑 Device removed for '+(user.name||user.username));
+  renderDeviceManagement();
+}
+function renderDeviceApprovals(){
+  var el=document.getElementById('device-approvals-list');if(!el)return;
+  if(!CU||CU.role!=='owner'){el.innerHTML='<div style="text-align:center;padding:14px;color:var(--muted);font-size:12px;">Owner access only.</div>';return;}
+  var reqs=(S.get('device_requests')||[]).filter(function(r){return r.status==='pending';})
+    .sort(function(a,b){return new Date(b.requestedAt)-new Date(a.requestedAt);});
+  if(!reqs.length){el.innerHTML='<div style="text-align:center;padding:14px;color:var(--muted);font-size:12px;">No pending device requests.</div>';return;}
+  var html='';
+  reqs.forEach(function(r){
+    html+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:7px;background:#fffbeb;">';
+    html+='<div style="flex:1;min-width:140px;">';
+    html+='<div style="font-weight:700;font-size:12px;">'+r.name+' <span style="font-weight:400;color:var(--muted);font-size:10px;">('+(RL[r.role]||r.role)+')</span></div>';
+    html+='<div style="font-size:10px;color:var(--muted);">📱 '+r.deviceLabel+' • '+r.requestedAt.substring(0,10)+' '+fmtT(r.requestedAt)+'</div>';
+    html+='</div>';
+    html+='<button data-rid="'+r.id+'" onclick="approveDeviceRequest(this.dataset.rid)" style="padding:5px 10px;background:#16a34a;color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;">✓ Approve</button>';
+    html+='<button data-rid="'+r.id+'" onclick="rejectDeviceRequest(this.dataset.rid)" style="padding:5px 10px;background:#ef4444;color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;">✕ Reject</button>';
+    html+='</div>';
+  });
+  el.innerHTML=html;
+}
+function renderDeviceManagement(){
+  var el=document.getElementById('device-mgmt-list');if(!el)return;
+  if(!CU||CU.role!=='owner'){el.innerHTML='<div style="text-align:center;padding:14px;color:var(--muted);font-size:12px;">Owner access only.</div>';return;}
+  var users=getUsers().filter(function(u){return u.role!=='owner';});
+  var html='';
+  users.forEach(function(u){
+    var devices=u.devices||[];
+    html+='<div style="border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:7px;">';
+    html+='<div style="font-weight:700;font-size:12px;margin-bottom:5px;">'+(u.name||u.username)+' <span style="font-weight:400;color:var(--muted);font-size:10px;">('+(RL[u.role]||u.role)+')</span></div>';
+    if(!devices.length){
+      html+='<div style="font-size:11px;color:var(--muted);">No approved devices yet.</div>';
+    } else {
+      devices.forEach(function(d){
+        html+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #f1f5f9;">';
+        html+='<div style="flex:1;font-size:11px;">📱 '+d.label+' <span style="color:var(--muted);">— approved '+(d.approvedAt?d.approvedAt.substring(0,10):'')+'</span></div>';
+        html+='<button data-uid="'+u.id+'" data-did="'+d.id+'" onclick="removeUserDevice(this.dataset.uid,this.dataset.did)" style="padding:3px 8px;background:#fee2e2;color:#dc2626;border:none;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;">Remove</button>';
+        html+='</div>';
+      });
+    }
+    html+='</div>';
+  });
+  if(!users.length)html='<div style="text-align:center;padding:14px;color:var(--muted);font-size:12px;">No users yet.</div>';
+  el.innerHTML=html;
+}
+
+// ── Live session guard: polls every ~8s while logged in (non-owner). Combined with
+// Firebase's live push of the 'users' key, a revoked device or deactivated account
+// gets force-logged-out within roughly 12 seconds even if it's already open elsewhere. ──
+function startSessionGuard(){
+  if(window._sessionGuardTimer)clearInterval(window._sessionGuardTimer);
+  window._sessionGuardTimer=setInterval(function(){
+    try{
+      if(!CU||CU.role==='owner')return; // Owner is exempt from the gate
+      var fresh=getUsers().find(function(x){return x.id===CU.id;});
+      var kickReason=null;
+      if(!fresh||fresh.status!=='active')kickReason='Account deactivated';
+      else if(!userHasApprovedDevice(fresh,getDeviceId()))kickReason='Device access removed';
+      if(kickReason)forceKickOut(kickReason);
+    }catch(e){console.error('[SessionGuard]',e);}
+  },8000);
+}
+function stopSessionGuard(){if(window._sessionGuardTimer){clearInterval(window._sessionGuardTimer);window._sessionGuardTimer=null;}}
+function forceKickOut(reason){
+  var name=CU?(CU.name||CU.username):'Unknown';
+  stopSessionGuard();
+  tgSend('⚠️ Session force-logged-out\nName: '+name+'\nReason: '+reason+'\nDevice: '+getDeviceLabel()+'\nTime: '+tgNow());
+  S.set('session',null);CU=null;CStage=null;
+  if(window._supTimer)clearInterval(window._supTimer);
+  if(window._workerSupTimer)clearInterval(window._workerSupTimer);
+  showPage('pg-login');
+  var lu=document.getElementById('l-u'),lp=document.getElementById('l-p');
+  if(lu)lu.value='';if(lp)lp.value='';
+  alert('You have been signed out by the Owner.\nReason: '+reason);
+}
+
 // ═══ INIT ═════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded',function(){
   fbInit(appBoot); // wait for cloud pull (max 2.5s) so first render uses freshest data, then boot
@@ -1380,22 +1648,26 @@ function doLogin(){
   if(!u||!p){document.getElementById('l-err').textContent='Enter username and password';return;}
   const users=getUsers();
   const user=users.find(x=>x.username===u);
-  if(!user){document.getElementById('l-err').textContent='Username not found';return;}
-  if(user.password!==p){document.getElementById('l-err').textContent='Wrong password';return;}
+  if(!user){
+    document.getElementById('l-err').textContent='Username not found';
+    tgSend('❌ Failed login attempt\nAttempted username: '+u+'\nDevice: '+getDeviceLabel()+'\nTime: '+tgNow());
+    return;
+  }
+  if(user.password!==p){
+    document.getElementById('l-err').textContent='Wrong password';
+    tgSend('❌ Failed login attempt\nName: '+(user.name||user.username)+'\nReason: wrong password\nDevice: '+getDeviceLabel()+'\nTime: '+tgNow());
+    return;
+  }
   if(user.status==='pending'){document.getElementById('l-err').textContent='Account pending approval';return;}
   if(user.status==='suspended'){document.getElementById('l-err').textContent='Account suspended — contact your supervisor';return;}
   if(user.status==='removed'){document.getElementById('l-err').textContent='Account removed';return;}
   if(user.role==='worker'){document.getElementById('l-err').textContent='Use the Worker login below';return;}
-  CU=user;
-  // Log the login
-  var log=S.get('login_log')||[];
-  var dev=navigator.userAgent.substring(0,80);
-  log.push({userId:user.id,username:user.username,name:user.name||user.username,
-    role:user.role,loginAt:new Date().toISOString(),type:'supervisor',device:dev});
-  if(log.length>200)log=log.slice(-200);
-  S.set('login_log',log);
-  S.set('session',{userId:user.id,loginAt:new Date().toISOString()});
-  enterApp();
+  var devId=getDeviceId(),devLabel=getDeviceLabel();
+  if(user.role!=='owner'&&!userHasApprovedDevice(user,devId)){
+    gateDeviceLogin(user,devId,devLabel,'supervisor');
+    return;
+  }
+  completeSupervisorLogin(user);
 }
 function goWorker(){showPage('pg-worker-pick');}
 function doWorkerLogin(){
@@ -1405,11 +1677,24 @@ function doWorkerLogin(){
   if(!u||!p){document.getElementById('w-err').textContent='Enter username and password';return;}
   var users=getUsers();
   var user=users.find(function(x){return x.username===u;});
-  if(!user){document.getElementById('w-err').textContent='Username not found';return;}
-  if(user.password!==p){document.getElementById('w-err').textContent='Wrong password';return;}
+  if(!user){
+    document.getElementById('w-err').textContent='Username not found';
+    tgSend('❌ Failed login attempt\nAttempted username: '+u+'\nDevice: '+getDeviceLabel()+'\nTime: '+tgNow());
+    return;
+  }
+  if(user.password!==p){
+    document.getElementById('w-err').textContent='Wrong password';
+    tgSend('❌ Failed login attempt\nName: '+(user.name||user.username)+'\nReason: wrong password\nDevice: '+getDeviceLabel()+'\nTime: '+tgNow());
+    return;
+  }
   if(user.status==='pending'){document.getElementById('w-err').textContent='Account pending approval — contact your supervisor';return;}
   if(user.status==='suspended'){document.getElementById('w-err').textContent='Account suspended — contact your supervisor';return;}
   if(user.status==='removed'){document.getElementById('w-err').textContent='Account removed';return;}
+  var devId=getDeviceId(),devLabel=getDeviceLabel();
+  if(user.role!=='owner'&&!userHasApprovedDevice(user,devId)){
+    gateDeviceLogin(user,devId,devLabel,'worker');
+    return;
+  }
   CU=user;S.set('session',{userId:user.id});startWorker();
 }
 function enterApp(){
@@ -1424,6 +1709,7 @@ function enterApp(){
     // Trigger boiler log check for yesterday's incomplete (called inside getBoilerLog)
     getBoilerLog();
     renderSup();
+    startSessionGuard();
     if(window._supTimer)clearInterval(window._supTimer);
     window._supTimer=setInterval(function(){try{checkOT();renderDash();renderJobs();}catch(e){console.error(e);}},30000);
     // Show boiler warning if any pending (after short delay so UI loads first)
@@ -1491,6 +1777,7 @@ function startWorker(){
   document.getElementById('w-sub').textContent=CU.name;
   showPage('pg-worker');
   renderWorker();
+  startSessionGuard();
   if(window._workerSupTimer)clearInterval(window._workerSupTimer);
   window._workerSupTimer=setInterval(function(){try{checkOT();renderWorker();}catch(e){console.error(e);}},30000);
 }
@@ -1506,8 +1793,8 @@ function cfm(title,msg,showTime,cb){
   ok.onclick=function(){closeM('m-cf');if(cb)cb();};
   document.getElementById('m-cf').classList.add('on');
 }
-function logout(){S.remove('session','session');S.set('session',null);CU=null;showPage('pg-login');document.getElementById('l-u').value='';document.getElementById('l-p').value='';}
-function wLogout(){S.set('session',null);CU=null;CStage=null;showPage('pg-login');}
+function logout(){stopSessionGuard();S.remove('session','session');S.set('session',null);CU=null;showPage('pg-login');document.getElementById('l-u').value='';document.getElementById('l-p').value='';}
+function wLogout(){stopSessionGuard();S.set('session',null);CU=null;CStage=null;showPage('pg-login');}
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));document.getElementById(id).classList.add('on');}
 
 // ═══ DAILY JOB GENERATION ════════════════════════════════════════════════
@@ -6562,7 +6849,7 @@ function sTab(tab,btn){
   if(tab==='jobs'){fab.onclick=openExpressModal;renderJobs();}
   else if(tab==='custs'){fab.onclick=openCustModal;renderCusts();}
   else if(tab==='issues'){fab.onclick=openIssModal;renderIssues();}
-  else if(tab==='users'){fab.onclick=openUserModal;renderUsers();renderLoginLog();renderBackupStatus();renderLicensePanel();}
+  else if(tab==='users'){fab.onclick=openUserModal;renderUsers();renderLoginLog();renderBackupStatus();renderLicensePanel();renderDeviceApprovals();renderDeviceManagement();}
   if(tab==='times'){
     renderTimesPanel();renderTimesCleanAreas();renderOpsMgrDropdown();
     var bset2=getBoilerSettings();
