@@ -1853,7 +1853,7 @@ function cfm(title,msg,showTime,cb){
   ok.onclick=function(){closeM('m-cf');if(cb)cb();};
   document.getElementById('m-cf').classList.add('on');
 }
-function logout(){stopSessionGuard();S.remove('session','session');S.set('session',null);CU=null;showPage('pg-login');document.getElementById('l-u').value='';document.getElementById('l-p').value='';}
+function logout(){stopSessionGuard();S.set('session',null);CU=null;showPage('pg-login');document.getElementById('l-u').value='';document.getElementById('l-p').value='';}
 function wLogout(){stopSessionGuard();S.set('session',null);CU=null;CStage=null;showPage('pg-login');}
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));document.getElementById(id).classList.add('on');}
 
