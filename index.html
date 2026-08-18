@@ -1161,6 +1161,57 @@ const SYNC_KEYS=['absences','advances','boiler_history','boiler_log','boiler_set
   'ot_records','ot_schedules','perf_appeals','perf_log','simple_jobs','staff','times','users','violations','workers_data'];
 let fbDB=null, fbReady=false;
 
+// ═══ OWNER-PRIVILEGED DATABASE ACCESS (secondary Firebase app instance) ═══
+// The PRIMARY app instance above always stays signed in anonymously — its uid
+// is the stable per-device fingerprint used everywhere else, and must never
+// change just because someone logs into the app as Owner on this device.
+// This SECONDARY instance is only ever used to sign in as the real Owner
+// account and perform the one privileged write that grants a device database
+// access (writing to /approved/data/{uid}). Everything else keeps using the
+// primary instance exactly as before.
+const OWNER_FB_EMAIL='owner@mklms.internal';
+const OWNER_FB_PASSWORD='MekongOwner2024!'; // same value as the in-app Owner password
+let fbSecondary=null, fbSecondaryDB=null;
+function fbSecondaryApp(){
+  if(!fbSecondary){
+    try{ fbSecondary=firebase.initializeApp(firebaseConfig,'owner-secondary'); }
+    catch(e){ fbSecondary=firebase.app('owner-secondary'); }
+    fbSecondaryDB=fbSecondary.database();
+  }
+  return fbSecondary;
+}
+// Signs the secondary instance in as Owner if it isn't already, then runs cb().
+function withOwnerAuth(cb){
+  try{
+    fbSecondaryApp();
+    var auth=fbSecondary.auth();
+    if(auth.currentUser&&auth.currentUser.email===OWNER_FB_EMAIL){cb();return;}
+    auth.signInWithEmailAndPassword(OWNER_FB_EMAIL,OWNER_FB_PASSWORD).then(function(){cb();})
+      .catch(function(e){console.warn('[Owner DB auth] sign-in failed:',e);});
+  }catch(e){console.warn('[Owner DB auth] error:',e);}
+}
+// Grants a device (by its Firebase anonymous uid) real database access.
+function grantApprovedUid(fbUid){
+  if(!fbUid)return;
+  withOwnerAuth(function(){
+    fbSecondaryDB.ref('approved/data/'+fbUid).set(true).catch(function(e){console.warn('[Owner DB auth] grant failed:',e);});
+  });
+}
+// Revokes a device's database access (device removed, or account suspended/removed).
+function revokeApprovedUid(fbUid){
+  if(!fbUid)return;
+  withOwnerAuth(function(){
+    fbSecondaryDB.ref('approved/data/'+fbUid).remove().catch(function(e){console.warn('[Owner DB auth] revoke failed:',e);});
+  });
+}
+// Owner logging in on this device: make sure THIS device's own anonymous uid
+// (used for its regular data sync) is on the approved list too — otherwise
+// the Owner's own reads/writes would be blocked by the same rule as everyone else.
+function ownerSelfApprove(){
+  var myUid=firebase.auth().currentUser&&firebase.auth().currentUser.uid;
+  if(myUid)grantApprovedUid(myUid);
+}
+
 function fbInit(cb){
   let called=false;
   function done(){if(called)return;called=true;cb();}
@@ -1369,13 +1420,11 @@ const TG_BOT_TOKEN='8559538564:AAElo8HijofGtNpahW0jKmsorxsHX0wCDuA';
 const TG_CHAT_ID='557250522';
 function tgSend(msg){
   try{
-    fetch('https://api.telegram.org/bot'+TG_BOT_TOKEN+'/sendMessage',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({chat_id:TG_CHAT_ID,text:'MKL Management System — '+msg}),
-      keepalive:true
-    }).catch(function(){});
-  }catch(e){}
+    var url='https://api.telegram.org/bot'+TG_BOT_TOKEN+'/sendMessage'
+      +'?chat_id='+encodeURIComponent(TG_CHAT_ID)
+      +'&text='+encodeURIComponent('MKL Management System — '+msg);
+    fetch(url).catch(function(e){console.warn('[Telegram] send failed:',e);});
+  }catch(e){console.warn('[Telegram] send error:',e);}
 }
 function tgNow(){
   var d=new Date();
@@ -1383,7 +1432,7 @@ function tgNow(){
 }
 
 // Each browser/device gets a persistent random id (kept out of SYNC_KEYS — local only).
-function getDeviceId(){
+function getAuthDeviceId(){
   var id=localStorage.getItem('ml_device_id');
   if(!id){
     id='dev_'+Date.now().toString(36)+'_'+Math.random().toString(36).substring(2,10);
@@ -1428,9 +1477,10 @@ function gateDeviceLogin(user,deviceId,deviceLabel,loginType){
   if(existing&&existing.status==='pending'){
     req=existing;
   } else {
+    var myFbUid=(firebase.auth().currentUser&&firebase.auth().currentUser.uid)||null;
     req={id:'dreq_'+Date.now().toString(36)+Math.random().toString(36).substring(2,7),
       userId:user.id,username:user.username,name:user.name||user.username,role:user.role,
-      deviceId:deviceId,deviceLabel:deviceLabel,requestedAt:new Date().toISOString(),status:'pending'};
+      deviceId:deviceId,deviceLabel:deviceLabel,fbUid:myFbUid,requestedAt:new Date().toISOString(),status:'pending'};
     var reqs=S.get('device_requests')||[];
     reqs.push(req);
     if(reqs.length>300)reqs=reqs.slice(-300);
@@ -1474,6 +1524,7 @@ function cancelDeviceWait(){
 }
 function completeSupervisorLogin(user){
   CU=user;
+  if(user.role==='owner')ownerSelfApprove();
   var log=S.get('login_log')||[];
   var dev=navigator.userAgent.substring(0,80);
   log.push({userId:user.id,username:user.username,name:user.name||user.username,
@@ -1495,9 +1546,10 @@ function approveDeviceRequest(reqId){
   var current=getUsers().find(function(x){return x.id===req.userId;})||{};
   var devices=(current.devices||[]).slice();
   if(!devices.find(function(d){return d.id===req.deviceId;})){
-    devices.push({id:req.deviceId,label:req.deviceLabel,approvedAt:new Date().toISOString()});
+    devices.push({id:req.deviceId,label:req.deviceLabel,fbUid:req.fbUid||null,approvedAt:new Date().toISOString()});
   }
   saveUserOverride(req.userId,{devices:devices});
+  grantApprovedUid(req.fbUid);
   tgSend('✅ Device approved\nName: '+req.name+'\nDevice: '+req.deviceLabel+'\nApproved by: '+(CU.name||CU.username)+'\nTime: '+tgNow());
   toast('✅ Device approved for '+req.name);
   renderDeviceApprovals();renderDeviceManagement();renderUsers();
@@ -1523,6 +1575,7 @@ function removeUserDevice(uid,deviceId){
   if(!confirm('Remove device "'+dev.label+'" from '+(user.name||user.username)+'?\n\nThey will be signed out automatically within seconds if currently logged in on it.'))return;
   var devices=(user.devices||[]).filter(function(d){return d.id!==deviceId;});
   saveUserOverride(uid,{devices:devices});
+  revokeApprovedUid(dev.fbUid);
   tgSend('🗑 Device removed\nName: '+(user.name||user.username)+'\nDevice: '+dev.label+'\nRemoved by: '+(CU.name||CU.username)+'\nTime: '+tgNow());
   toast('🗑 Device removed for '+(user.name||user.username));
   renderDeviceManagement();
@@ -1582,7 +1635,7 @@ function startSessionGuard(){
       var fresh=getUsers().find(function(x){return x.id===CU.id;});
       var kickReason=null;
       if(!fresh||fresh.status!=='active')kickReason='Account deactivated';
-      else if(!userHasApprovedDevice(fresh,getDeviceId()))kickReason='Device access removed';
+      else if(!userHasApprovedDevice(fresh,getAuthDeviceId()))kickReason='Device access removed';
       if(kickReason)forceKickOut(kickReason);
     }catch(e){console.error('[SessionGuard]',e);}
   },8000);
@@ -1662,7 +1715,7 @@ function doLogin(){
   if(user.status==='suspended'){document.getElementById('l-err').textContent='Account suspended — contact your supervisor';return;}
   if(user.status==='removed'){document.getElementById('l-err').textContent='Account removed';return;}
   if(user.role==='worker'){document.getElementById('l-err').textContent='Use the Worker login below';return;}
-  var devId=getDeviceId(),devLabel=getDeviceLabel();
+  var devId=getAuthDeviceId(),devLabel=getDeviceLabel();
   if(user.role!=='owner'&&!userHasApprovedDevice(user,devId)){
     gateDeviceLogin(user,devId,devLabel,'supervisor');
     return;
@@ -1690,7 +1743,7 @@ function doWorkerLogin(){
   if(user.status==='pending'){document.getElementById('w-err').textContent='Account pending approval — contact your supervisor';return;}
   if(user.status==='suspended'){document.getElementById('w-err').textContent='Account suspended — contact your supervisor';return;}
   if(user.status==='removed'){document.getElementById('w-err').textContent='Account removed';return;}
-  var devId=getDeviceId(),devLabel=getDeviceLabel();
+  var devId=getAuthDeviceId(),devLabel=getDeviceLabel();
   if(user.role!=='owner'&&!userHasApprovedDevice(user,devId)){
     gateDeviceLogin(user,devId,devLabel,'worker');
     return;
@@ -2163,6 +2216,7 @@ function suspendUser(uid){
   if(!u){toast('User not found',true);return;}
   if(!confirm('Suspend '+( u.name||u.username)+'? They will not be able to log in.')){return;}
   saveUserOverride(uid,{status:'suspended'});
+  (u.devices||[]).forEach(function(d){revokeApprovedUid(d.fbUid);});
   toast('⏸ '+( u.name||u.username)+' suspended');
   renderUsers();
 }
@@ -2182,6 +2236,7 @@ function removeUser(uid){
   if(!u)return;
   if(!confirm('Permanently remove '+( u.name||u.username)+'?\n\nThey will see only the login screen and cannot access anything.')){return;}
   saveUserOverride(uid,{status:'removed'});
+  (u.devices||[]).forEach(function(d){revokeApprovedUid(d.fbUid);});
   toast('🗑 '+( u.name||u.username)+' removed — cannot log in');
   renderUsers();
 }
