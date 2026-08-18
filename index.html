@@ -3111,7 +3111,7 @@ function renderWorker(){
         if(actualISO){
           html+='<span style="background:#16a34a;color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;">✓</span>';
         } else if(isCurrent){
-          html+='<button data-jid="'+j.id+'" onclick="wClockOutBtn(this)" style="background:#6366f1;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">'+(isPU?"☑ Pickup":"☑ Deliver")+'</button>';
+          html+='<button data-jid="'+j.id+'" onclick="wClockOut(this.dataset.jid)" style="background:#6366f1;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">'+(isPU?"☑ Pickup":"☑ Deliver")+'</button>';
         } else {
           html+='<span style="color:#94a3b8;font-size:10px;">Pending</span>';
         }
@@ -3142,7 +3142,7 @@ function renderWorker(){
         } else if(isCurrent){
           // Show clickable checkbox to start
           html+='<div style="display:flex;flex-direction:column;align-items:center;gap:3px;">';
-          html+='<div data-jid="'+j.id+'" onclick="wClockInBtn(this)" style="width:22px;height:22px;border:2px solid #6366f1;border-radius:4px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;color:#6366f1;" title="Tick to start">☐</div>';
+          html+='<div data-jid="'+j.id+'" onclick="wClockIn(this.dataset.jid)" style="width:22px;height:22px;border:2px solid #6366f1;border-radius:4px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;color:#6366f1;" title="Tick to start">☐</div>';
           html+='<span style="font-size:9px;color:#6366f1;font-weight:600;">Tap to start</span>';
           html+='</div>';
         } else {
@@ -3161,7 +3161,7 @@ function renderWorker(){
           // Can finish — show clickable checkbox
           var ns=jNext(j);var nsl=ns&&SM[ns]?SM[ns].label:"Done";
           html+='<div style="display:flex;flex-direction:column;align-items:center;gap:3px;">';
-          html+='<div data-jid="'+j.id+'" onclick="wClockOutBtn(this)" style="width:22px;height:22px;border:2px solid #16a34a;border-radius:4px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;color:#16a34a;" title="Tick to finish">☐</div>';
+          html+='<div data-jid="'+j.id+'" onclick="wClockOut(this.dataset.jid)" style="width:22px;height:22px;border:2px solid #16a34a;border-radius:4px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;color:#16a34a;" title="Tick to finish">☐</div>';
           html+='<span style="font-size:9px;color:#16a34a;font-weight:600;">→'+nsl+'</span>';
           html+='</div>';
         } else {
