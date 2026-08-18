@@ -1167,36 +1167,44 @@ function fbSecondaryApp(){
   }
   return fbSecondary;
 }
-// Signs the secondary instance in as Owner if it isn't already, then runs cb().
-function withOwnerAuth(cb){
-  try{
-    fbSecondaryApp();
-    var auth=fbSecondary.auth();
-    if(auth.currentUser&&auth.currentUser.email===OWNER_FB_EMAIL){cb();return;}
-    auth.signInWithEmailAndPassword(OWNER_FB_EMAIL,OWNER_FB_PASSWORD).then(function(){cb();})
-      .catch(function(e){console.warn('[Owner DB auth] sign-in failed:',e);});
-  }catch(e){console.warn('[Owner DB auth] error:',e);}
+// Signs the secondary instance in as Owner if it isn't already. Returns a
+// promise so callers that need the write to have actually landed (like
+// login) can wait for it instead of firing-and-forgetting.
+function withOwnerAuth(){
+  return new Promise(function(resolve){
+    try{
+      fbSecondaryApp();
+      var auth=fbSecondary.auth();
+      if(auth.currentUser&&auth.currentUser.email===OWNER_FB_EMAIL){resolve();return;}
+      auth.signInWithEmailAndPassword(OWNER_FB_EMAIL,OWNER_FB_PASSWORD).then(function(){resolve();})
+        .catch(function(e){console.warn('[Owner DB auth] sign-in failed:',e);resolve();});
+    }catch(e){console.warn('[Owner DB auth] error:',e);resolve();}
+  });
 }
 // Grants a device (by its Firebase anonymous uid) real database access.
 function grantApprovedUid(fbUid){
-  if(!fbUid)return;
-  withOwnerAuth(function(){
-    fbSecondaryDB.ref('approved/data/'+fbUid).set(true).catch(function(e){console.warn('[Owner DB auth] grant failed:',e);});
+  if(!fbUid)return Promise.resolve();
+  return withOwnerAuth().then(function(){
+    return fbSecondaryDB.ref('approved/data/'+fbUid).set(true).catch(function(e){console.warn('[Owner DB auth] grant failed:',e);});
   });
 }
 // Revokes a device's database access (device removed, or account suspended/removed).
 function revokeApprovedUid(fbUid){
-  if(!fbUid)return;
-  withOwnerAuth(function(){
-    fbSecondaryDB.ref('approved/data/'+fbUid).remove().catch(function(e){console.warn('[Owner DB auth] revoke failed:',e);});
+  if(!fbUid)return Promise.resolve();
+  return withOwnerAuth().then(function(){
+    return fbSecondaryDB.ref('approved/data/'+fbUid).remove().catch(function(e){console.warn('[Owner DB auth] revoke failed:',e);});
   });
 }
 // Owner logging in on this device: make sure THIS device's own anonymous uid
 // (used for its regular data sync) is on the approved list too — otherwise
 // the Owner's own reads/writes would be blocked by the same rule as everyone else.
+// Returns a promise so login can wait for it — otherwise the Owner could act
+// (e.g. create a user) before this finishes, and that write would silently
+// fail since this device's own uid wasn't approved yet.
 function ownerSelfApprove(){
   var myUid=firebase.auth().currentUser&&firebase.auth().currentUser.uid;
-  if(myUid)grantApprovedUid(myUid);
+  if(!myUid)return Promise.resolve();
+  return grantApprovedUid(myUid);
 }
 
 function fbInit(cb){
@@ -1511,15 +1519,24 @@ function cancelDeviceWait(){
 }
 function completeSupervisorLogin(user){
   CU=user;
-  if(user.role==='owner')ownerSelfApprove();
-  var log=S.get('login_log')||[];
-  var dev=navigator.userAgent.substring(0,80);
-  log.push({userId:user.id,username:user.username,name:user.name||user.username,
-    role:user.role,loginAt:new Date().toISOString(),type:'supervisor',device:dev});
-  if(log.length>200)log=log.slice(-200);
-  S.set('login_log',log);
-  S.set('session',{userId:user.id,loginAt:new Date().toISOString()});
-  enterApp();
+  function finishLogin(){
+    var log=S.get('login_log')||[];
+    var dev=navigator.userAgent.substring(0,80);
+    log.push({userId:user.id,username:user.username,name:user.name||user.username,
+      role:user.role,loginAt:new Date().toISOString(),type:'supervisor',device:dev});
+    if(log.length>200)log=log.slice(-200);
+    S.set('login_log',log);
+    S.set('session',{userId:user.id,loginAt:new Date().toISOString()});
+    enterApp();
+  }
+  if(user.role==='owner'){
+    var proceeded=false;
+    var proceed=function(){if(proceeded)return;proceeded=true;finishLogin();};
+    setTimeout(proceed,4000); // never block login more than 4s if the network is down
+    ownerSelfApprove().then(proceed);
+  } else {
+    finishLogin();
+  }
 }
 
 // ── Owner: approve / reject a pending device request ──
