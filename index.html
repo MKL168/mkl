@@ -1272,8 +1272,10 @@ function fbShowSyncBanner(){
   if(document.getElementById('sync-banner'))return;
   const b=document.createElement('div');
   b.id='sync-banner';
-  b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#059669;color:#fff;'+
-    'text-align:center;padding:10px 14px;font:600 14px system-ui;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.2);';
+  // Bottom, not top — a top banner sits directly over the topbar's Logout
+  // button, role badge, and clock, silently swallowing taps meant for those.
+  b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#059669;color:#fff;'+
+    'text-align:center;padding:10px 14px;font:600 14px system-ui;cursor:pointer;box-shadow:0 -2px 8px rgba(0,0,0,.2);';
   b.textContent='🔄 New data synced from another device — tap to refresh';
   b.onclick=function(){location.reload();};
   document.body.appendChild(b);
@@ -1731,9 +1733,21 @@ function doLogin(){
     tgSend('❌ Failed login attempt\nName: '+(user.name||user.username)+'\nReason: wrong password\nDevice: '+getDeviceLabel()+'\nTime: '+tgNow());
     return;
   }
-  if(user.status==='pending'){document.getElementById('l-err').textContent='Account pending approval';return;}
-  if(user.status==='suspended'){document.getElementById('l-err').textContent='Account suspended — contact your supervisor';return;}
-  if(user.status==='removed'){document.getElementById('l-err').textContent='Account removed';return;}
+  if(user.status==='pending'){
+    document.getElementById('l-err').textContent='Account pending approval';
+    tgSend('⚠️ Login attempt on pending account\nName: '+(user.name||user.username)+'\nDevice: '+getDeviceLabel()+'\nTime: '+tgNow());
+    return;
+  }
+  if(user.status==='suspended'){
+    document.getElementById('l-err').textContent='Account suspended — contact your supervisor';
+    tgSend('⚠️ Login attempt on suspended account\nName: '+(user.name||user.username)+'\nDevice: '+getDeviceLabel()+'\nTime: '+tgNow());
+    return;
+  }
+  if(user.status==='removed'){
+    document.getElementById('l-err').textContent='Account removed';
+    tgSend('⚠️ Login attempt on removed account\nName: '+(user.name||user.username)+'\nDevice: '+getDeviceLabel()+'\nTime: '+tgNow());
+    return;
+  }
   var devId=getAuthDeviceId(),devLabel=getDeviceLabel();
   var loginType=user.role==='worker'?'worker':'supervisor';
   if(user.role!=='owner'&&!userHasApprovedDevice(user,devId)){
