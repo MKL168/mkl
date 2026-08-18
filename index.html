@@ -1402,6 +1402,23 @@ function getUsers(){
   const deletedIds=getDeletedUserIds();
   return all.filter(function(u){return deletedIds.indexOf(u.id)===-1;});
 }
+// Looks up a username for LOGIN specifically. Removing and recreating an
+// account (rather than permanently deleting it) leaves the old record behind
+// with the same username — this picks the right one among any duplicates:
+// prefer an active account, and among ties prefer the most recently created,
+// so a stale removed/suspended duplicate can never block or shadow the real
+// account at login (it used to — whichever record happened to be created
+// first would win, even if its password was long out of date).
+function findLoginUser(uname){
+  var candidates=getUsers().filter(function(x){return x.username===uname;});
+  if(!candidates.length)return null;
+  if(candidates.length===1)return candidates[0];
+  var active=candidates.filter(function(x){return x.status==='active';});
+  var pool=active.length?active:candidates;
+  return pool.slice().sort(function(a,b){
+    return new Date(b.createdAt||0)-new Date(a.createdAt||0);
+  })[0];
+}
 function getIssues(){return S.get('issues')||[];}
 function getStaff(){return S.get('staff')||{};}
 function getTimes(){return {...DEFT,...(S.get('times')||{})};}
@@ -1703,8 +1720,7 @@ function doLogin(){
   const p=document.getElementById('l-p').value;
   document.getElementById('l-err').textContent='';
   if(!u||!p){document.getElementById('l-err').textContent='Enter username and password';return;}
-  const users=getUsers();
-  const user=users.find(x=>x.username===u);
+  const user=findLoginUser(u);
   if(!user){
     document.getElementById('l-err').textContent='Username not found';
     tgSend('❌ Failed login attempt\nAttempted username: '+u+'\nDevice: '+getDeviceLabel()+'\nTime: '+tgNow());
