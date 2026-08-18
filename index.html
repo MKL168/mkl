@@ -326,20 +326,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
     <input class="li" id="l-p" type="password" placeholder="Enter password">
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" onclick="doLogin()">Sign In</button>
-    <div class="llink" onclick="goWorker()"><span>👕 I am a Worker →</span></div>
   </div>
-</div>
-
-<!-- WORKER PICK -->
-<div id="pg-worker-pick" class="page" style="background:#1a1d23;padding:18px;">
-  <div style="text-align:center;margin-bottom:18px;"><div style="font-size:32px">🌊</div><div style="font-size:16px;font-weight:700;color:#fff;margin-top:5px;">Worker Login</div></div>
-  <div class="ll">Username</div>
-  <input class="li" id="w-u" type="text" placeholder="Enter username" autocomplete="off" style="margin-bottom:7px;">
-  <div class="ll">Password</div>
-  <input class="li" id="w-p" type="password" placeholder="Enter password">
-  <div class="lerr" id="w-err"></div>
-  <button class="lbtn" onclick="doWorkerLogin()">Start Work</button>
-  <div class="llink" onclick="showPage('pg-login')" style="margin-top:10px;">← Back</div>
 </div>
 
 <!-- DEVICE APPROVAL WAIT SCREEN -->
@@ -1046,7 +1033,7 @@ function checkTamper(){
   // Check that key functions haven't been altered by verifying their approximate length
   // This catches simple tampering attempts
   try {
-    var fns=[getJobs,getUsers,doLogin,doWorkerLogin];
+    var fns=[getJobs,getUsers,doLogin,startWorker];
     for(var i=0;i<fns.length;i++){
       if(typeof fns[i]!=='function')return true;
       if(fns[i].toString().length<10)return true;
@@ -1678,11 +1665,8 @@ document.addEventListener('keydown',function(e){
     var a=document.activeElement;
     if(!a)return;
     var lp=document.getElementById('l-p');
-    var wp=document.getElementById('w-p');
     if(a.id==='l-u'&&lp)lp.focus();
     else if(a.id==='l-p')doLogin();
-    else if(a.id==='w-u'&&wp)wp.focus();
-    else if(a.id==='w-p')doWorkerLogin();
   }
 });
 
@@ -1694,6 +1678,9 @@ function tick(){
 setInterval(tick,10000);tick();
 
 // ═══ LOGIN ════════════════════════════════════════════════════════════════
+// Single username/password form for everyone — the account's role decides
+// which screen they land on after signing in; nothing on this screen asks
+// or shows what that role is.
 function doLogin(){
   const u=document.getElementById('l-u').value.trim().toLowerCase();
   const p=document.getElementById('l-p').value;
@@ -1714,41 +1701,14 @@ function doLogin(){
   if(user.status==='pending'){document.getElementById('l-err').textContent='Account pending approval';return;}
   if(user.status==='suspended'){document.getElementById('l-err').textContent='Account suspended — contact your supervisor';return;}
   if(user.status==='removed'){document.getElementById('l-err').textContent='Account removed';return;}
-  if(user.role==='worker'){document.getElementById('l-err').textContent='Use the Worker login below';return;}
   var devId=getAuthDeviceId(),devLabel=getDeviceLabel();
+  var loginType=user.role==='worker'?'worker':'supervisor';
   if(user.role!=='owner'&&!userHasApprovedDevice(user,devId)){
-    gateDeviceLogin(user,devId,devLabel,'supervisor');
+    gateDeviceLogin(user,devId,devLabel,loginType);
     return;
   }
-  completeSupervisorLogin(user);
-}
-function goWorker(){showPage('pg-worker-pick');}
-function doWorkerLogin(){
-  var u=document.getElementById('w-u').value.trim().toLowerCase();
-  var p=document.getElementById('w-p').value;
-  document.getElementById('w-err').textContent='';
-  if(!u||!p){document.getElementById('w-err').textContent='Enter username and password';return;}
-  var users=getUsers();
-  var user=users.find(function(x){return x.username===u;});
-  if(!user){
-    document.getElementById('w-err').textContent='Username not found';
-    tgSend('❌ Failed login attempt\nAttempted username: '+u+'\nDevice: '+getDeviceLabel()+'\nTime: '+tgNow());
-    return;
-  }
-  if(user.password!==p){
-    document.getElementById('w-err').textContent='Wrong password';
-    tgSend('❌ Failed login attempt\nName: '+(user.name||user.username)+'\nReason: wrong password\nDevice: '+getDeviceLabel()+'\nTime: '+tgNow());
-    return;
-  }
-  if(user.status==='pending'){document.getElementById('w-err').textContent='Account pending approval — contact your supervisor';return;}
-  if(user.status==='suspended'){document.getElementById('w-err').textContent='Account suspended — contact your supervisor';return;}
-  if(user.status==='removed'){document.getElementById('w-err').textContent='Account removed';return;}
-  var devId=getAuthDeviceId(),devLabel=getDeviceLabel();
-  if(user.role!=='owner'&&!userHasApprovedDevice(user,devId)){
-    gateDeviceLogin(user,devId,devLabel,'worker');
-    return;
-  }
-  CU=user;S.set('session',{userId:user.id});startWorker();
+  if(loginType==='worker'){CU=user;S.set('session',{userId:user.id});startWorker();}
+  else{completeSupervisorLogin(user);}
 }
 function enterApp(){
   try{
