@@ -587,11 +587,11 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
   </div>
   <div id="st-inventory" style="display:none">
     <div class="tabs" style="border-top:none;">
-      <button class="tb on" onclick="invTab('all',this)">All</button>
-      <button class="tb" onclick="invTab('chemical',this)">🧪 Chemicals</button>
-      <button class="tb" onclick="invTab('sparepart',this)">🔩 Spareparts</button>
-      <button class="tb" onclick="invTab('reorder',this)">⚠ Needs Reorder</button>
-      <button class="tb" onclick="invTab('pending',this)">⏳ Pending Requests</button>
+      <button class="tb on" onclick="invTab('items',this)">📋 Item List</button>
+      <button class="tb" onclick="invTab('control',this)">📊 Control Sheet</button>
+      <button class="tb" onclick="invTab('addition',this)">➕ Addition</button>
+      <button class="tb" onclick="invTab('request',this)">📤 Request</button>
+      <button class="tb" onclick="invTab('approvals',this)">✅ Approvals</button>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px 0;">
       <div class="chips" style="padding:0;flex:1;" id="inv-chips"></div>
@@ -1860,10 +1860,59 @@ function invTab(tab,btn){
   window._invTab=tab;
   document.querySelectorAll('#st-inventory .tb').forEach(function(b){b.classList.remove('on');});
   if(btn)btn.classList.add('on');
+  var fab=document.getElementById('fab');
+  if(fab&&document.getElementById('st-inventory').style.display!=='none'){
+    fab.style.display=(tab==='items')?'flex':'none';
+  }
   renderInventory();
 }
+
+function invItemLabel(item){return item?item.name+' ('+item.unit+')':'(deleted item)';}
+
+// Renders a compact item card used inside the Addition/Request tabs — a
+// single action button per item that opens the request modal for it.
+function invActionRow(item,type){
+  var bal=invBalance(item.id);
+  var cat=INV_CATS.find(function(c){return c.id===item.category;})||{icon:'📦',label:item.category,color:'#64748b'};
+  var color=type==='in'?'#0891b2':'#ea580c';
+  var label=type==='in'?'📥 Add Stock':'📤 Request Stock';
+  var html='<div class="mrow" style="background:#fff;">';
+  html+='<div class="mrow-main">';
+  html+='<div class="mrow-title">'+cat.icon+' '+item.name+'</div>';
+  html+='<div class="mrow-sub">Current balance <b>'+bal+' '+item.unit+'</b></div>';
+  html+='</div>';
+  html+='<div class="mrow-action"><button data-id="'+item.id+'" onclick="openInvStockModal(this.dataset.id,\''+type+'\')" style="background:'+color+';color:#fff;border:none;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;">'+label+'</button></div>';
+  html+='</div>';
+  return html;
+}
+
+// Renders one transaction history row (used in Addition, Request, Approvals tabs).
+function invTxRow(t,items,showApprovalButtons){
+  var item=items.find(function(i){return i.id===t.itemId;})||{name:'(deleted item)',unit:''};
+  var statusColor={pending:'#d97706',approved:'#16a34a',rejected:'#dc2626'}[t.status];
+  var statusBg={pending:'#fffbeb',approved:'#dcfce7',rejected:'#fee2e2'}[t.status];
+  var statusLabel={pending:'⏳ Pending',approved:'✓ Approved',rejected:'✕ Rejected'}[t.status];
+  var html='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--sh);">';
+  html+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">';
+  html+='<span style="font-size:14px;font-weight:700;">'+item.name+'</span>';
+  html+='<span style="background:'+statusBg+';color:'+statusColor+';padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;">'+statusLabel+'</span>';
+  html+='<span style="margin-left:auto;font-family:var(--mono);font-weight:800;font-size:14px;color:#1d4ed8;">'+t.qty+' '+item.unit+'</span>';
+  html+='</div>';
+  if(t.note)html+='<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">📝 '+t.note+'</div>';
+  html+='<div style="font-size:10px;color:var(--muted);margin-bottom:'+(showApprovalButtons&&t.status==='pending'?'10px':'0')+';">Requested by '+t.requestedBy+' · '+fmtT(t.requestedAt)+' '+t.requestedAt.substring(0,10)
+    +(t.reviewedBy?' · Reviewed by <b>'+t.reviewedBy+'</b>':'')+'</div>';
+  if(showApprovalButtons&&t.status==='pending'&&CU&&(CU.role==='owner'||CU.role==='admin')){
+    html+='<div style="display:flex;gap:7px;">';
+    html+='<button data-id="'+t.id+'" onclick="approveInvTx(this.dataset.id,\'approve\')" style="flex:2;padding:8px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✓ Approve</button>';
+    html+='<button data-id="'+t.id+'" onclick="approveInvTx(this.dataset.id,\'reject\')" style="flex:1;padding:8px;background:#ef4444;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✕ Reject</button>';
+    html+='</div>';
+  }
+  html+='</div>';
+  return html;
+}
+
 function renderInventory(){
-  var tab=window._invTab||'all';
+  var tab=window._invTab||'items';
   var items=getInvItems();
   var tx=getInvTx();
   var pendingCount=tx.filter(function(t){return t.status==='pending';}).length;
@@ -1880,6 +1929,7 @@ function renderInventory(){
       opt.value=val;opt.textContent=lbl;monthEl.appendChild(opt);
     }
   }
+  var month=monthEl&&monthEl.value?monthEl.value:todayStr().substring(0,7);
 
   var chipsEl=document.getElementById('inv-chips');
   var chemCount=items.filter(function(i){return i.category==='chemical';}).length;
@@ -1889,24 +1939,33 @@ function renderInventory(){
   var el=document.getElementById('inv-list');if(!el)return;
   var isAdmin=CU&&(CU.role==='owner'||CU.role==='admin');
 
-  if(tab==='pending'){
-    var pending=tx.filter(function(t){return t.status==='pending';});
-    if(!pending.length){el.innerHTML='<div class="empty-s"><div class="ei">✅</div>No pending stock requests.</div>';return;}
+  // ── 1. ITEM LIST — the master catalog everything else links to ─────────
+  if(tab==='items'){
+    var list=items.slice().sort(function(a,b){return a.name.localeCompare(b.name);});
+    if(!list.length){
+      el.innerHTML='<div class="empty-s"><div class="ei">📦</div>No items yet.'+(isAdmin?' Tap + to add one.':'')+'</div>';
+      return;
+    }
     var html='';
-    pending.forEach(function(t){
-      var item=items.find(function(i){return i.id===t.itemId;})||{name:'(deleted item)',unit:''};
-      html+='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--sh);">';
-      html+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">';
-      html+='<span style="background:'+(t.type==='in'?'#dcfce7':'#fee2e2')+';color:'+(t.type==='in'?'#16a34a':'#dc2626')+';padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">'+(t.type==='in'?'📥 Stock In':'📤 Stock Out')+'</span>';
+    list.forEach(function(item){
+      var cat=INV_CATS.find(function(c){return c.id===item.category;})||{icon:'📦',label:item.category,color:'#64748b'};
+      var bal=invBalance(item.id);
+      var reorderLevel=item.reorderLevel||0;
+      var needsReorder=reorderLevel>0&&bal<=reorderLevel;
+      var low=bal<=0;
+      html+='<div style="background:var(--white);border:1px solid '+(needsReorder?'#fca5a5':'var(--border)')+';border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--sh);">';
+      html+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">';
+      html+='<span style="background:'+cat.color+';color:#fff;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;">'+cat.icon+' '+cat.label+'</span>';
       html+='<span style="font-size:14px;font-weight:700;">'+item.name+'</span>';
-      html+='<span style="margin-left:auto;font-family:var(--mono);font-weight:800;font-size:14px;color:#1d4ed8;">'+t.qty+' '+item.unit+'</span>';
+      if(needsReorder)html+='<span style="background:#fee2e2;color:#dc2626;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;">⚠ REORDER</span>';
+      html+='<span style="margin-left:auto;font-family:var(--mono);font-weight:800;font-size:16px;color:'+(low?'#dc2626':needsReorder?'#d97706':'#16a34a')+';">'+bal+'</span>';
+      html+='<span style="font-size:11px;color:var(--muted);">'+item.unit+'</span>';
       html+='</div>';
-      if(t.note)html+='<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">📝 '+t.note+'</div>';
-      html+='<div style="font-size:10px;color:var(--muted);margin-bottom:10px;">Requested by '+t.requestedBy+' · '+fmtT(t.requestedAt)+' '+t.requestedAt.substring(0,10)+'</div>';
+      html+='<div style="font-size:10px;color:var(--muted);margin-bottom:8px;">'+(reorderLevel>0?'Reorder level: '+reorderLevel+' '+item.unit+' · ':'')+'Beginning balance: '+(item.beginningBalance||0)+' '+item.unit+'</div>';
       if(isAdmin){
         html+='<div style="display:flex;gap:7px;">';
-        html+='<button data-id="'+t.id+'" onclick="approveInvTx(this.dataset.id,\'approve\')" style="flex:2;padding:8px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✓ Approve</button>';
-        html+='<button data-id="'+t.id+'" onclick="approveInvTx(this.dataset.id,\'reject\')" style="flex:1;padding:8px;background:#ef4444;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✕ Reject</button>';
+        html+='<button data-id="'+item.id+'" onclick="openInvItemModal(this.dataset.id)" style="flex:1;padding:8px;background:#f1f5f9;color:#374151;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">✏️ Edit</button>';
+        html+='<button data-id="'+item.id+'" onclick="deleteInvItem(this.dataset.id)" style="padding:8px 12px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">🗑</button>';
         html+='</div>';
       }
       html+='</div>';
@@ -1915,42 +1974,80 @@ function renderInventory(){
     return;
   }
 
-  var list=items;
-  if(tab==='chemical'||tab==='sparepart')list=items.filter(function(i){return i.category===tab;});
-  else if(tab==='reorder')list=items.filter(function(i){return (i.reorderLevel||0)>0&&invBalance(i.id)<=i.reorderLevel;});
-  list=list.slice().sort(function(a,b){return a.name.localeCompare(b.name);});
-
-  if(!list.length){
-    el.innerHTML='<div class="empty-s"><div class="ei">📦</div>No items yet.'+(isAdmin?' Tap + to add one.':'')+'</div>';
+  // ── 2. CONTROL SHEET — beginning / in / out / ending, linked to Item List ─
+  if(tab==='control'){
+    if(!items.length){el.innerHTML='<div class="empty-s"><div class="ei">📊</div>Add items to the Item List first.</div>';return;}
+    var approvedTx=tx.filter(function(t){return t.status==='approved';});
+    var html2='<div class="htable-wrap"><div style="min-width:640px;">';
+    html2+='<div style="display:grid;grid-template-columns:110px 1.4fr 90px 90px 90px 90px 100px;background:#1e293b;color:#fff;font-size:10px;font-weight:700;padding:8px 12px;gap:6px;">';
+    html2+='<div>Category</div><div>Item</div><div style="text-align:right;">Beginning</div><div style="text-align:right;">In</div><div style="text-align:right;">Out</div><div style="text-align:right;">Ending</div><div>Status</div>';
+    html2+='</div>';
+    items.slice().sort(function(a,b){return a.name.localeCompare(b.name);}).forEach(function(item,ri){
+      var cat=INV_CATS.find(function(c){return c.id===item.category;})||{icon:'📦',label:item.category};
+      var itemTx=approvedTx.filter(function(t){return t.itemId===item.id;});
+      var beforeMonth=itemTx.filter(function(t){return t.reviewedAt&&t.reviewedAt.substring(0,7)<month;});
+      var periodBeginning=(item.beginningBalance||0);
+      beforeMonth.forEach(function(t){periodBeginning+=t.type==='in'?t.qty:-t.qty;});
+      var inMonth=itemTx.filter(function(t){return t.reviewedAt&&t.reviewedAt.substring(0,7)===month;});
+      var periodIn=inMonth.filter(function(t){return t.type==='in';}).reduce(function(a,t){return a+t.qty;},0);
+      var periodOut=inMonth.filter(function(t){return t.type==='out';}).reduce(function(a,t){return a+t.qty;},0);
+      var periodEnding=periodBeginning+periodIn-periodOut;
+      var reorderLevel=item.reorderLevel||0;
+      var needsReorder=reorderLevel>0&&periodEnding<=reorderLevel;
+      html2+='<div style="display:grid;grid-template-columns:110px 1.4fr 90px 90px 90px 90px 100px;padding:8px 12px;gap:6px;align-items:center;background:'+(needsReorder?'#fef2f2':ri%2===0?'#fff':'#f8fafc')+';border-bottom:1px solid #f1f5f9;font-size:12px;">';
+      html2+='<div>'+cat.icon+' '+cat.label+'</div>';
+      html2+='<div style="font-weight:700;">'+item.name+'</div>';
+      html2+='<div style="text-align:right;font-family:var(--mono);">'+periodBeginning+'</div>';
+      html2+='<div style="text-align:right;font-family:var(--mono);color:#16a34a;">'+(periodIn?'+'+periodIn:'0')+'</div>';
+      html2+='<div style="text-align:right;font-family:var(--mono);color:#dc2626;">'+(periodOut?'−'+periodOut:'0')+'</div>';
+      html2+='<div style="text-align:right;font-family:var(--mono);font-weight:800;">'+periodEnding+'</div>';
+      html2+='<div>'+(needsReorder?'<span style="color:#dc2626;font-weight:700;">⚠ Reorder</span>':'<span style="color:#16a34a;">OK</span>')+'</div>';
+      html2+='</div>';
+    });
+    html2+='</div></div>';
+    el.innerHTML=html2;
     return;
   }
 
-  var html='';
-  list.forEach(function(item){
-    var cat=INV_CATS.find(function(c){return c.id===item.category;})||{icon:'📦',label:item.category,color:'#64748b'};
-    var bal=invBalance(item.id);
-    var reorderLevel=item.reorderLevel||0;
-    var needsReorder=reorderLevel>0&&bal<=reorderLevel;
-    var low=bal<=0;
-    html+='<div style="background:var(--white);border:1px solid '+(needsReorder?'#fca5a5':'var(--border)')+';border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--sh);">';
-    html+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">';
-    html+='<span style="background:'+cat.color+';color:#fff;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;">'+cat.icon+' '+cat.label+'</span>';
-    html+='<span style="font-size:14px;font-weight:700;">'+item.name+'</span>';
-    if(needsReorder)html+='<span style="background:#fee2e2;color:#dc2626;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;">⚠ REORDER</span>';
-    html+='<span style="margin-left:auto;font-family:var(--mono);font-weight:800;font-size:16px;color:'+(low?'#dc2626':needsReorder?'#d97706':'#16a34a')+';">'+bal+'</span>';
-    html+='<span style="font-size:11px;color:var(--muted);">'+item.unit+'</span>';
-    html+='</div>';
-    if(reorderLevel>0)html+='<div style="font-size:10px;color:var(--muted);margin-bottom:8px;margin-top:-4px;">Reorder level: '+reorderLevel+' '+item.unit+'</div>';
-    html+='<div style="display:flex;gap:7px;flex-wrap:wrap;">';
-    html+='<button data-id="'+item.id+'" onclick="openInvStockModal(this.dataset.id,\'in\')" style="flex:1;min-width:90px;padding:8px;background:#0891b2;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">📥 Stock In</button>';
-    html+='<button data-id="'+item.id+'" onclick="openInvStockModal(this.dataset.id,\'out\')" style="flex:1;min-width:90px;padding:8px;background:#ea580c;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">📤 Stock Out</button>';
-    if(isAdmin){
-      html+='<button data-id="'+item.id+'" onclick="openInvItemModal(this.dataset.id)" style="padding:8px 10px;background:#f1f5f9;color:#374151;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">✏️</button>';
-      html+='<button data-id="'+item.id+'" onclick="deleteInvItem(this.dataset.id)" style="padding:8px 10px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">🗑</button>';
-    }
-    html+='</div></div>';
-  });
-  el.innerHTML=html;
+  // ── 3. ADDITION (Stock In) — item picker + full stock-in history ────────
+  if(tab==='addition'){
+    if(!items.length){el.innerHTML='<div class="empty-s"><div class="ei">📥</div>Add items to the Item List first.</div>';return;}
+    var html3='<div style="background:var(--white);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;margin-bottom:14px;">';
+    html3+='<div style="background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">📥 Request Stock Addition</div>';
+    items.slice().sort(function(a,b){return a.name.localeCompare(b.name);}).forEach(function(item){html3+=invActionRow(item,'in');});
+    html3+='</div>';
+    var inTx=tx.filter(function(t){return t.type==='in';}).sort(function(a,b){return new Date(b.requestedAt)-new Date(a.requestedAt);});
+    html3+='<div style="font-size:12px;font-weight:700;color:var(--muted);margin:4px 2px 8px;">RECENT ADDITIONS</div>';
+    if(!inTx.length)html3+='<div class="empty-s"><div class="ei">📭</div>No stock additions recorded yet.</div>';
+    else inTx.slice(0,30).forEach(function(t){html3+=invTxRow(t,items,true);});
+    el.innerHTML=html3;
+    return;
+  }
+
+  // ── 4. REQUEST (Stock Out) — item picker + full stock-out history ───────
+  if(tab==='request'){
+    if(!items.length){el.innerHTML='<div class="empty-s"><div class="ei">📤</div>Add items to the Item List first.</div>';return;}
+    var html4='<div style="background:var(--white);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;margin-bottom:14px;">';
+    html4+='<div style="background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">📤 Request Stock Out</div>';
+    items.slice().sort(function(a,b){return a.name.localeCompare(b.name);}).forEach(function(item){html4+=invActionRow(item,'out');});
+    html4+='</div>';
+    var outTx=tx.filter(function(t){return t.type==='out';}).sort(function(a,b){return new Date(b.requestedAt)-new Date(a.requestedAt);});
+    html4+='<div style="font-size:12px;font-weight:700;color:var(--muted);margin:4px 2px 8px;">RECENT REQUESTS</div>';
+    if(!outTx.length)html4+='<div class="empty-s"><div class="ei">📭</div>No stock-out requests recorded yet.</div>';
+    else outTx.slice(0,30).forEach(function(t){html4+=invTxRow(t,items,true);});
+    el.innerHTML=html4;
+    return;
+  }
+
+  // ── 5. APPROVALS — every pending Addition/Request in one queue ──────────
+  if(tab==='approvals'){
+    var pending=tx.filter(function(t){return t.status==='pending';}).sort(function(a,b){return new Date(a.requestedAt)-new Date(b.requestedAt);});
+    if(!pending.length){el.innerHTML='<div class="empty-s"><div class="ei">✅</div>No pending stock requests.</div>';return;}
+    var html5='';
+    pending.forEach(function(t){html5+=invTxRow(t,items,true);});
+    el.innerHTML=html5;
+    return;
+  }
 }
 
 function exportInventoryExcel(){
