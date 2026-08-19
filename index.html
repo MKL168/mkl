@@ -590,9 +590,14 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
       <button class="tb on" onclick="invTab('all',this)">All</button>
       <button class="tb" onclick="invTab('chemical',this)">🧪 Chemicals</button>
       <button class="tb" onclick="invTab('sparepart',this)">🔩 Spareparts</button>
+      <button class="tb" onclick="invTab('reorder',this)">⚠ Needs Reorder</button>
       <button class="tb" onclick="invTab('pending',this)">⏳ Pending Requests</button>
     </div>
-    <div class="chips" style="padding:9px 12px 0;" id="inv-chips"></div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px 0;">
+      <div class="chips" style="padding:0;flex:1;" id="inv-chips"></div>
+      <select id="inv-report-month" style="border:1.5px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12px;font-family:var(--sans);outline:none;"></select>
+      <button onclick="exportInventoryExcel()" style="padding:6px 14px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">⬇ Export Excel</button>
+    </div>
     <div class="list" id="inv-list"></div>
   </div>
   <div id="st-done" style="display:none">
@@ -863,6 +868,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
       <div class="ff"><label class="fl">Unit</label><input class="fi" id="inv-item-unit" type="text" placeholder="e.g. Liters, Pieces, Kg" maxlength="20"></div>
       <div class="ff"><label class="fl">Beginning Balance</label><input class="fi" id="inv-item-begin" type="number" min="0" step="any" placeholder="0"></div>
     </div>
+    <div class="ff"><label class="fl">Reorder Level <span style="font-size:10px;color:var(--muted);font-weight:400;">(flag when balance falls to or below this)</span></label><input class="fi" id="inv-item-reorder" type="number" min="0" step="any" placeholder="0"></div>
     <div class="mact"><button class="mbtn-c" onclick="closeM('m-inv-item')">Cancel</button><button class="mbtn-s" onclick="saveInvItem()">Save Item</button></div>
   </div>
 </div>
@@ -1748,6 +1754,7 @@ function openInvItemModal(id){
   document.getElementById('inv-item-name').value=item?item.name:'';
   document.getElementById('inv-item-unit').value=item?item.unit:'';
   document.getElementById('inv-item-begin').value=item?item.beginningBalance:'';
+  document.getElementById('inv-item-reorder').value=item&&item.reorderLevel!==undefined?item.reorderLevel:'';
   _invCat=item?item.category:null;
   var catEl=document.getElementById('inv-item-cat');
   var html='';
@@ -1765,15 +1772,16 @@ function saveInvItem(){
   if(!name){toast('Enter an item name',true);return;}
   var unit=document.getElementById('inv-item-unit').value.trim()||'units';
   var begin=parseFloat(document.getElementById('inv-item-begin').value)||0;
+  var reorderLevel=parseFloat(document.getElementById('inv-item-reorder').value)||0;
   var id=document.getElementById('inv-item-id').value;
   var items=getInvItems();
   if(id){
     var item=items.find(function(i){return i.id===id;});
-    if(item){item.name=name;item.category=_invCat;item.unit=unit;item.beginningBalance=begin;}
+    if(item){item.name=name;item.category=_invCat;item.unit=unit;item.beginningBalance=begin;item.reorderLevel=reorderLevel;}
     toast('✓ Item updated');
   } else {
     items.push({id:'inv_'+Date.now().toString(36)+Math.random().toString(36).substring(2,6),
-      name:name,category:_invCat,unit:unit,beginningBalance:begin,
+      name:name,category:_invCat,unit:unit,beginningBalance:begin,reorderLevel:reorderLevel,
       createdAt:new Date().toISOString(),createdBy:CU?(CU.name||CU.username):'Unknown'});
     toast('✓ Item added: '+name);
   }
@@ -1859,11 +1867,24 @@ function renderInventory(){
   var items=getInvItems();
   var tx=getInvTx();
   var pendingCount=tx.filter(function(t){return t.status==='pending';}).length;
+  var reorderCount=items.filter(function(i){return (i.reorderLevel||0)>0&&invBalance(i.id)<=i.reorderLevel;}).length;
+
+  var monthEl=document.getElementById('inv-report-month');
+  if(monthEl&&!monthEl.options.length){
+    var now=new Date();
+    for(var i=0;i<6;i++){
+      var d=new Date(now.getFullYear(),now.getMonth()-i,1);
+      var val=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      var lbl=d.toLocaleString('default',{month:'long',year:'numeric'});
+      var opt=document.createElement('option');
+      opt.value=val;opt.textContent=lbl;monthEl.appendChild(opt);
+    }
+  }
 
   var chipsEl=document.getElementById('inv-chips');
   var chemCount=items.filter(function(i){return i.category==='chemical';}).length;
   var spareCount=items.filter(function(i){return i.category==='sparepart';}).length;
-  if(chipsEl)chipsEl.innerHTML=chip(items.length,'Items','')+chip(chemCount,'Chemicals','#0891b2')+chip(spareCount,'Spareparts','#78716c')+chip(pendingCount,'Pending','var(--warn)');
+  if(chipsEl)chipsEl.innerHTML=chip(items.length,'Items','')+chip(chemCount,'Chemicals','#0891b2')+chip(spareCount,'Spareparts','#78716c')+chip(reorderCount,'Reorder','var(--over)')+chip(pendingCount,'Pending','var(--warn)');
 
   var el=document.getElementById('inv-list');if(!el)return;
   var isAdmin=CU&&(CU.role==='owner'||CU.role==='admin');
@@ -1896,6 +1917,7 @@ function renderInventory(){
 
   var list=items;
   if(tab==='chemical'||tab==='sparepart')list=items.filter(function(i){return i.category===tab;});
+  else if(tab==='reorder')list=items.filter(function(i){return (i.reorderLevel||0)>0&&invBalance(i.id)<=i.reorderLevel;});
   list=list.slice().sort(function(a,b){return a.name.localeCompare(b.name);});
 
   if(!list.length){
@@ -1907,14 +1929,18 @@ function renderInventory(){
   list.forEach(function(item){
     var cat=INV_CATS.find(function(c){return c.id===item.category;})||{icon:'📦',label:item.category,color:'#64748b'};
     var bal=invBalance(item.id);
+    var reorderLevel=item.reorderLevel||0;
+    var needsReorder=reorderLevel>0&&bal<=reorderLevel;
     var low=bal<=0;
-    html+='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--sh);">';
+    html+='<div style="background:var(--white);border:1px solid '+(needsReorder?'#fca5a5':'var(--border)')+';border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--sh);">';
     html+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">';
     html+='<span style="background:'+cat.color+';color:#fff;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;">'+cat.icon+' '+cat.label+'</span>';
     html+='<span style="font-size:14px;font-weight:700;">'+item.name+'</span>';
-    html+='<span style="margin-left:auto;font-family:var(--mono);font-weight:800;font-size:16px;color:'+(low?'#dc2626':'#16a34a')+';">'+bal+'</span>';
+    if(needsReorder)html+='<span style="background:#fee2e2;color:#dc2626;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;">⚠ REORDER</span>';
+    html+='<span style="margin-left:auto;font-family:var(--mono);font-weight:800;font-size:16px;color:'+(low?'#dc2626':needsReorder?'#d97706':'#16a34a')+';">'+bal+'</span>';
     html+='<span style="font-size:11px;color:var(--muted);">'+item.unit+'</span>';
     html+='</div>';
+    if(reorderLevel>0)html+='<div style="font-size:10px;color:var(--muted);margin-bottom:8px;margin-top:-4px;">Reorder level: '+reorderLevel+' '+item.unit+'</div>';
     html+='<div style="display:flex;gap:7px;flex-wrap:wrap;">';
     html+='<button data-id="'+item.id+'" onclick="openInvStockModal(this.dataset.id,\'in\')" style="flex:1;min-width:90px;padding:8px;background:#0891b2;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">📥 Stock In</button>';
     html+='<button data-id="'+item.id+'" onclick="openInvStockModal(this.dataset.id,\'out\')" style="flex:1;min-width:90px;padding:8px;background:#ea580c;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">📤 Stock Out</button>';
@@ -1926,7 +1952,58 @@ function renderInventory(){
   });
   el.innerHTML=html;
 }
-function getStaff(){return S.get('staff')||{};}
+
+function exportInventoryExcel(){
+  if(typeof XLSX==='undefined'){toast('Excel library not loaded',true);return;}
+  var monthEl=document.getElementById('inv-report-month');
+  var month=monthEl&&monthEl.value?monthEl.value:todayStr().substring(0,7);
+  var monthLabel=new Date(month+'-01T00:00:00').toLocaleString('default',{month:'long',year:'numeric'});
+  var items=getInvItems();
+  if(!items.length){toast('No inventory items to export',true);return;}
+  var allTx=getInvTx().filter(function(t){return t.status==='approved';});
+
+  var wb=XLSX.utils.book_new();
+
+  // Sheet 1: per-item summary for the selected month
+  var summaryRows=[['Category','Item','Unit','Reorder Level','Beginning Balance','Stock In','Stock Out','Ending Balance','Status']];
+  var ledgerRows=[['Date','Item','Category','Type','Quantity','Requested By','Approved By','Note']];
+
+  items.slice().sort(function(a,b){return a.name.localeCompare(b.name);}).forEach(function(item){
+    var cat=INV_CATS.find(function(c){return c.id===item.category;});
+    var itemTx=allTx.filter(function(t){return t.itemId===item.id;});
+
+    // Beginning = starting balance + everything approved BEFORE this month
+    var beforeMonth=itemTx.filter(function(t){return t.reviewedAt&&t.reviewedAt.substring(0,7)<month;});
+    var periodBeginning=(item.beginningBalance||0);
+    beforeMonth.forEach(function(t){periodBeginning+=t.type==='in'?t.qty:-t.qty;});
+
+    // In/Out approved WITHIN this month
+    var inMonth=itemTx.filter(function(t){return t.reviewedAt&&t.reviewedAt.substring(0,7)===month;});
+    var periodIn=inMonth.filter(function(t){return t.type==='in';}).reduce(function(a,t){return a+t.qty;},0);
+    var periodOut=inMonth.filter(function(t){return t.type==='out';}).reduce(function(a,t){return a+t.qty;},0);
+    var periodEnding=periodBeginning+periodIn-periodOut;
+
+    var reorderLevel=item.reorderLevel||0;
+    var status=reorderLevel>0&&periodEnding<=reorderLevel?'REORDER':'OK';
+
+    summaryRows.push([(cat?cat.label:item.category),item.name,item.unit,reorderLevel,periodBeginning,periodIn,periodOut,periodEnding,status]);
+
+    inMonth.sort(function(a,b){return a.reviewedAt<b.reviewedAt?-1:1;}).forEach(function(t){
+      ledgerRows.push([t.reviewedAt.substring(0,10),item.name,(cat?cat.label:item.category),(t.type==='in'?'Stock In':'Stock Out'),t.qty,t.requestedBy,t.reviewedBy||'',t.note||'']);
+    });
+  });
+
+  var ws1=XLSX.utils.aoa_to_sheet(summaryRows);
+  ws1['!cols']=[{wch:12},{wch:22},{wch:10},{wch:13},{wch:15},{wch:10},{wch:11},{wch:14},{wch:10}];
+  XLSX.utils.book_append_sheet(wb,ws1,'Inventory Summary');
+
+  var ws2=XLSX.utils.aoa_to_sheet(ledgerRows);
+  ws2['!cols']=[{wch:12},{wch:22},{wch:12},{wch:11},{wch:10},{wch:16},{wch:16},{wch:30}];
+  XLSX.utils.book_append_sheet(wb,ws2,'Transaction Ledger');
+
+  XLSX.writeFile(wb,'MKL_Inventory_'+month+'.xlsx');
+  toast('⬇ Inventory report exported — '+monthLabel);
+}
 function getTimes(){return {...DEFT,...(S.get('times')||{})};}
 
 // ═══ DEVICE APPROVAL / TELEGRAM SECURITY LAYER ══════════════════════════════
@@ -4000,6 +4077,7 @@ function getCleanLog(){
   var today=todayStr();
   var log=S.get('clean_log')||{};
   if(log.date!==today){log={date:today,areas:{}};}
+  if(!log.areas)log.areas={};
   return log;
 }
 function saveCleanLog(log){S.set('clean_log',log);}
