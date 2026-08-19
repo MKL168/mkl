@@ -389,6 +389,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
     <button class="tb" onclick="sTab('leave',this)">🏖 Leave</button>
     <button class="tb" onclick="sTab('finance',this)">💰 Finance</button>
     <button class="tb" onclick="sTab('attend',this)">📅 Attendance</button>
+    <button class="tb" onclick="sTab('inventory',this)">📦 Inventory</button>
     <button class="tb" onclick="sTab('done',this)">✅ Done</button>
   </div>
   <div id="st-dash" style="padding:12px;">
@@ -583,6 +584,16 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
       <button onclick="saveOpsSettings()" style="width:100%;padding:10px;background:#0ea5e9;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Save Operations Settings</button>
     </div>
 
+  </div>
+  <div id="st-inventory" style="display:none">
+    <div class="tabs" style="border-top:none;">
+      <button class="tb on" onclick="invTab('all',this)">All</button>
+      <button class="tb" onclick="invTab('chemical',this)">🧪 Chemicals</button>
+      <button class="tb" onclick="invTab('sparepart',this)">🔩 Spareparts</button>
+      <button class="tb" onclick="invTab('pending',this)">⏳ Pending Requests</button>
+    </div>
+    <div class="chips" style="padding:9px 12px 0;" id="inv-chips"></div>
+    <div class="list" id="inv-list"></div>
   </div>
   <div id="st-done" style="display:none">
     <div class="sec-t">Completed Jobs</div>
@@ -839,6 +850,36 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
   </div>
 </div>
 
+<!-- INVENTORY ITEM MODAL -->
+<div class="mbg" id="m-inv-item">
+  <div class="modal" style="max-width:440px;">
+    <div class="mh"><span id="inv-item-title">Add Item</span><button class="mc" onclick="closeM('m-inv-item')">✕</button></div>
+    <input type="hidden" id="inv-item-id">
+    <div class="ff"><label class="fl">Category</label>
+      <div style="display:flex;gap:7px;" id="inv-item-cat"></div>
+    </div>
+    <div class="ff"><label class="fl">Item Name</label><input class="fi" id="inv-item-name" type="text" placeholder="e.g. Bleach, Detergent, Motor Belt…" maxlength="60"></div>
+    <div class="fr">
+      <div class="ff"><label class="fl">Unit</label><input class="fi" id="inv-item-unit" type="text" placeholder="e.g. Liters, Pieces, Kg" maxlength="20"></div>
+      <div class="ff"><label class="fl">Beginning Balance</label><input class="fi" id="inv-item-begin" type="number" min="0" step="any" placeholder="0"></div>
+    </div>
+    <div class="mact"><button class="mbtn-c" onclick="closeM('m-inv-item')">Cancel</button><button class="mbtn-s" onclick="saveInvItem()">Save Item</button></div>
+  </div>
+</div>
+
+<!-- INVENTORY STOCK REQUEST MODAL -->
+<div class="mbg" id="m-inv-stock">
+  <div class="modal" style="max-width:420px;">
+    <div class="mh"><span id="inv-stock-title">Stock Request</span><button class="mc" onclick="closeM('m-inv-stock')">✕</button></div>
+    <input type="hidden" id="inv-stock-itemid">
+    <input type="hidden" id="inv-stock-type">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;" id="inv-stock-item-display"></div>
+    <div class="ff"><label class="fl">Quantity</label><input class="fi" id="inv-stock-qty" type="number" min="0.01" step="any" placeholder="0"></div>
+    <div class="ff"><label class="fl">Note / Reason</label><input class="fi" id="inv-stock-note" type="text" placeholder="e.g. Weekly delivery, used for washing machine repair…" maxlength="200"></div>
+    <div class="mact"><button class="mbtn-c" onclick="closeM('m-inv-stock')">Cancel</button><button class="mbtn-s" onclick="submitInvStockRequest()">Submit Request</button></div>
+  </div>
+</div>
+
 <!-- WATER LEVEL MODAL -->
 <div class="mbg" id="m-waterlevel">
   <div class="modal" style="max-width:420px;">
@@ -991,7 +1032,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
     <div class="ff"><label class="fl">Details</label><input class="fi" id="iss-det" type="text" placeholder="More info…" maxlength="200"></div>
     <div class="fr">
       <div class="ff"><label class="fl">Priority</label><select class="fs" id="iss-pri"><option value="high">🔴 High</option><option value="medium" selected>🟡 Medium</option><option value="low">🟢 Low</option></select></div>
-      <div class="ff"><label class="fl">Assign To</label><input class="fi" id="iss-asgn" type="text" placeholder="Name…" maxlength="30"></div>
+      <div class="ff"><label class="fl">Assign To</label><select class="fs" id="iss-asgn"><option value="">— Not assigned —</option></select></div>
     </div>
     <div class="mact"><button class="mbtn-c" onclick="closeM('m-issue')">Cancel</button><button class="mbtn-s" onclick="saveIssue()">Log Issue</button></div>
   </div>
@@ -1176,7 +1217,7 @@ const firebaseConfig={
 // intentionally excluded — those are per-device/local-only by design.
 const SYNC_KEYS=['absences','advances','boiler_history','boiler_log','boiler_settings','boiler_warnings',
   'clean_log','clean_settings','counter','customers','dayoffs','deleted_user_ids','device_requests','done','expenses',
-  'generated_keys','issues','jobs','last_backup','leaves','login_log','ops_history','ops_log','ops_settings',
+  'generated_keys','inventory_items','inventory_tx','issues','jobs','last_backup','leaves','login_log','ops_history','ops_log','ops_settings',
   'ot_records','ot_schedules','perf_appeals','perf_log','simple_jobs','staff','times','users','violations','workers_data'];
 let fbDB=null, fbReady=false;
 
@@ -1302,15 +1343,24 @@ function fbListenRemote(){
 
 function fbShowSyncBanner(){
   if(document.getElementById('sync-banner'))return;
+  // In-flow, not fixed to a screen edge — a fixed position always ends up
+  // overlapping something on some panel (header buttons at top, or hard to
+  // reach with a thumb at the very bottom). Placing it right after the
+  // header, in normal document flow, keeps it in an easy, predictable spot
+  // on every panel and never covers anything else.
+  const activePage=document.querySelector('.page.on');
+  const topbar=activePage?activePage.querySelector('.topbar'):null;
   const b=document.createElement('div');
   b.id='sync-banner';
-  // Bottom, not top — a top banner sits directly over the topbar's Logout
-  // button, role badge, and clock, silently swallowing taps meant for those.
-  b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#059669;color:#fff;'+
-    'text-align:center;padding:10px 14px;font:600 14px system-ui;cursor:pointer;box-shadow:0 -2px 8px rgba(0,0,0,.2);';
+  b.style.cssText='background:#059669;color:#fff;text-align:center;padding:11px 14px;'+
+    'font:600 13px system-ui;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.15);';
   b.textContent='🔄 New data synced from another device — tap to refresh';
   b.onclick=function(){location.reload();};
-  document.body.appendChild(b);
+  if(topbar&&topbar.parentNode){
+    topbar.parentNode.insertBefore(b,topbar.nextSibling);
+  } else {
+    document.body.insertBefore(b,document.body.firstChild);
+  }
 }
 
 // Wrap every write path so it also mirrors to Firebase — no call sites elsewhere need to change.
@@ -1469,20 +1519,27 @@ var _issCat=null,_issSub=null;
 
 function openIssModal(){
   _issCat=null;_issSub=null;
-  var f=['iss-ttl','iss-det','iss-client','iss-asgn'];
+  var f=['iss-ttl','iss-det','iss-client'];
   f.forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   var ttl=document.getElementById('iss-ttl');if(ttl)ttl.dataset.autofill='1';
   var pri=document.getElementById('iss-pri');if(pri)pri.value='medium';
   var wrap=document.getElementById('iss-client-wrap');if(wrap)wrap.style.display='none';
   var raiserEl=document.getElementById('iss-raiser');
-  if(raiserEl){
-    raiserEl.innerHTML='<option value="">— Not specified —</option>';
-    getAttendPeople().forEach(function(p){
-      var opt=document.createElement('option');
-      opt.value=p.name;opt.textContent=p.name+(p.role?' ('+p.role+')':'');
-      raiserEl.appendChild(opt);
-    });
-  }
+  var asgnEl=document.getElementById('iss-asgn');
+  if(raiserEl)raiserEl.innerHTML='<option value="">— Not specified —</option>';
+  if(asgnEl)asgnEl.innerHTML='<option value="">— Not assigned —</option>';
+  getAttendPeople().forEach(function(p){
+    if(raiserEl){
+      var opt1=document.createElement('option');
+      opt1.value=p.name;opt1.textContent=p.name+(p.role?' ('+p.role+')':'');
+      raiserEl.appendChild(opt1);
+    }
+    if(asgnEl){
+      var opt2=document.createElement('option');
+      opt2.value=p.name;opt2.textContent=p.name+(p.role?' ('+p.role+')':'');
+      asgnEl.appendChild(opt2);
+    }
+  });
   renderIssCats();
   renderIssSubs();
   var m=document.getElementById('m-issue');if(m)m.classList.add('on');
@@ -1534,7 +1591,7 @@ function saveIssue(){
     title:ttl,
     details:(document.getElementById('iss-det')||{}).value?document.getElementById('iss-det').value.trim():'',
     priority:(document.getElementById('iss-pri')||{}).value||'medium',
-    assignedTo:(document.getElementById('iss-asgn')||{}).value?document.getElementById('iss-asgn').value.trim():'',
+    assignedTo:(document.getElementById('iss-asgn')||{}).value||'',
     raisedBy:(document.getElementById('iss-raiser')||{}).value||'',
     status:'open',
     createdAt:new Date().toISOString(),
@@ -1654,6 +1711,217 @@ function renderDone(){
     html+='<div class="mrow-main">';
     html+='<div class="mrow-title">✅ '+custName+'</div>';
     html+='<div class="mrow-sub">'+(doneAt?fmtT(doneAt)+' · '+doneAt.substring(0,10):j.date||'')+(j.deliveryWorker?' · by <b>'+j.deliveryWorker+'</b>':'')+'</div>';
+    html+='</div></div>';
+  });
+  el.innerHTML=html;
+}
+
+// ═══ INVENTORY CONTROL (Chemicals & Spareparts) ═══════════════════════════
+function getInvItems(){return S.get('inventory_items')||[];}
+function saveInvItems(items){S.set('inventory_items',items);}
+function getInvTx(){return S.get('inventory_tx')||[];}
+function saveInvTx(tx){S.set('inventory_tx',tx);}
+
+const INV_CATS=[
+  {id:'chemical',icon:'🧪',label:'Chemical',color:'#0891b2'},
+  {id:'sparepart',icon:'🔩',label:'Sparepart',color:'#78716c'},
+];
+
+// Current balance = beginning balance + approved Stock In − approved Stock Out.
+// Pending requests never affect the balance — only an approval does.
+function invBalance(itemId){
+  var item=getInvItems().find(function(i){return i.id===itemId;});
+  if(!item)return 0;
+  var bal=item.beginningBalance||0;
+  getInvTx().filter(function(t){return t.itemId===itemId&&t.status==='approved';}).forEach(function(t){
+    bal+=t.type==='in'?t.qty:-t.qty;
+  });
+  return bal;
+}
+
+var _invCat=null;
+function openInvItemModal(id){
+  var isEdit=!!id;
+  document.getElementById('inv-item-title').textContent=isEdit?'Edit Item':'Add Item';
+  document.getElementById('inv-item-id').value=id||'';
+  var item=isEdit?getInvItems().find(function(i){return i.id===id;}):null;
+  document.getElementById('inv-item-name').value=item?item.name:'';
+  document.getElementById('inv-item-unit').value=item?item.unit:'';
+  document.getElementById('inv-item-begin').value=item?item.beginningBalance:'';
+  _invCat=item?item.category:null;
+  var catEl=document.getElementById('inv-item-cat');
+  var html='';
+  INV_CATS.forEach(function(c){
+    var on=_invCat===c.id;
+    html+='<button data-c="'+c.id+'" onclick="pickInvCat(this.dataset.c)" style="flex:1;padding:9px;border-radius:8px;border:1.5px solid '+(on?c.color:'#e2e8f0')+';background:'+(on?c.color:'#fff')+';color:'+(on?'#fff':'#374151')+';font-size:12px;font-weight:700;cursor:pointer;">'+c.icon+' '+c.label+'</button>';
+  });
+  catEl.innerHTML=html;
+  document.getElementById('m-inv-item').classList.add('on');
+}
+function pickInvCat(cid){_invCat=cid;openInvItemModal(document.getElementById('inv-item-id').value||null);}
+function saveInvItem(){
+  if(!_invCat){toast('Pick a category',true);return;}
+  var name=document.getElementById('inv-item-name').value.trim();
+  if(!name){toast('Enter an item name',true);return;}
+  var unit=document.getElementById('inv-item-unit').value.trim()||'units';
+  var begin=parseFloat(document.getElementById('inv-item-begin').value)||0;
+  var id=document.getElementById('inv-item-id').value;
+  var items=getInvItems();
+  if(id){
+    var item=items.find(function(i){return i.id===id;});
+    if(item){item.name=name;item.category=_invCat;item.unit=unit;item.beginningBalance=begin;}
+    toast('✓ Item updated');
+  } else {
+    items.push({id:'inv_'+Date.now().toString(36)+Math.random().toString(36).substring(2,6),
+      name:name,category:_invCat,unit:unit,beginningBalance:begin,
+      createdAt:new Date().toISOString(),createdBy:CU?(CU.name||CU.username):'Unknown'});
+    toast('✓ Item added: '+name);
+  }
+  saveInvItems(items);
+  closeM('m-inv-item');
+  renderInventory();
+}
+function deleteInvItem(id){
+  if(!CU||(CU.role!=='owner'&&CU.role!=='admin')){toast('Admin access required',true);return;}
+  var item=getInvItems().find(function(i){return i.id===id;});
+  if(!item)return;
+  if(!confirm('Delete "'+item.name+'"? This also removes its transaction history.'))return;
+  saveInvItems(getInvItems().filter(function(i){return i.id!==id;}));
+  saveInvTx(getInvTx().filter(function(t){return t.itemId!==id;}));
+  toast('🗑 Item deleted');
+  renderInventory();
+}
+
+function openInvStockModal(itemId,type){
+  var item=getInvItems().find(function(i){return i.id===itemId;});
+  if(!item)return;
+  document.getElementById('inv-stock-title').textContent=(type==='in'?'📥 Stock In Request':'📤 Stock Out Request');
+  document.getElementById('inv-stock-itemid').value=itemId;
+  document.getElementById('inv-stock-type').value=type;
+  document.getElementById('inv-stock-item-display').innerHTML=item.name+' <span style="color:#94a3b8;">('+item.unit+') — current balance: <b>'+invBalance(itemId)+'</b></span>';
+  document.getElementById('inv-stock-qty').value='';
+  document.getElementById('inv-stock-note').value='';
+  document.getElementById('m-inv-stock').classList.add('on');
+}
+function submitInvStockRequest(){
+  var itemId=document.getElementById('inv-stock-itemid').value;
+  var type=document.getElementById('inv-stock-type').value;
+  var qty=parseFloat(document.getElementById('inv-stock-qty').value);
+  if(!qty||qty<=0){toast('Enter a valid quantity',true);return;}
+  var item=getInvItems().find(function(i){return i.id===itemId;});
+  if(!item)return;
+  if(type==='out'&&qty>invBalance(itemId)){
+    if(!confirm('This requests more than the current balance ('+invBalance(itemId)+' '+item.unit+'). Submit anyway for review?'))return;
+  }
+  var tx=getInvTx();
+  tx.unshift({
+    id:'invtx_'+Date.now().toString(36)+Math.random().toString(36).substring(2,6),
+    itemId:itemId,type:type,qty:qty,
+    note:document.getElementById('inv-stock-note').value.trim(),
+    requestedBy:CU?(CU.name||CU.username):'Unknown',
+    requestedAt:new Date().toISOString(),
+    status:'pending',
+  });
+  saveInvTx(tx);
+  closeM('m-inv-stock');
+  toast((type==='in'?'📥 Stock In':'📤 Stock Out')+' request submitted — awaiting approval');
+  renderInventory();
+}
+function approveInvTx(txId,action){
+  if(!CU||(CU.role!=='owner'&&CU.role!=='admin')){toast('Admin access required',true);return;}
+  var tx=getInvTx();
+  var t=tx.find(function(x){return x.id===txId;});
+  if(!t||t.status!=='pending')return;
+  var item=getInvItems().find(function(i){return i.id===t.itemId;});
+  if(action==='reject'){
+    t.status='rejected';
+  } else {
+    if(t.type==='out'&&item&&t.qty>invBalance(t.itemId)){
+      if(!confirm('Approving this would take the balance negative ('+invBalance(t.itemId)+' available). Approve anyway?'))return;
+    }
+    t.status='approved';
+  }
+  t.reviewedBy=CU.name||CU.username;
+  t.reviewedAt=new Date().toISOString();
+  saveInvTx(tx);
+  toast(action==='reject'?'✕ Request rejected':'✅ Request approved');
+  renderInventory();
+}
+
+function invTab(tab,btn){
+  window._invTab=tab;
+  document.querySelectorAll('#st-inventory .tb').forEach(function(b){b.classList.remove('on');});
+  if(btn)btn.classList.add('on');
+  renderInventory();
+}
+function renderInventory(){
+  var tab=window._invTab||'all';
+  var items=getInvItems();
+  var tx=getInvTx();
+  var pendingCount=tx.filter(function(t){return t.status==='pending';}).length;
+
+  var chipsEl=document.getElementById('inv-chips');
+  var chemCount=items.filter(function(i){return i.category==='chemical';}).length;
+  var spareCount=items.filter(function(i){return i.category==='sparepart';}).length;
+  if(chipsEl)chipsEl.innerHTML=chip(items.length,'Items','')+chip(chemCount,'Chemicals','#0891b2')+chip(spareCount,'Spareparts','#78716c')+chip(pendingCount,'Pending','var(--warn)');
+
+  var el=document.getElementById('inv-list');if(!el)return;
+  var isAdmin=CU&&(CU.role==='owner'||CU.role==='admin');
+
+  if(tab==='pending'){
+    var pending=tx.filter(function(t){return t.status==='pending';});
+    if(!pending.length){el.innerHTML='<div class="empty-s"><div class="ei">✅</div>No pending stock requests.</div>';return;}
+    var html='';
+    pending.forEach(function(t){
+      var item=items.find(function(i){return i.id===t.itemId;})||{name:'(deleted item)',unit:''};
+      html+='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--sh);">';
+      html+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">';
+      html+='<span style="background:'+(t.type==='in'?'#dcfce7':'#fee2e2')+';color:'+(t.type==='in'?'#16a34a':'#dc2626')+';padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">'+(t.type==='in'?'📥 Stock In':'📤 Stock Out')+'</span>';
+      html+='<span style="font-size:14px;font-weight:700;">'+item.name+'</span>';
+      html+='<span style="margin-left:auto;font-family:var(--mono);font-weight:800;font-size:14px;color:#1d4ed8;">'+t.qty+' '+item.unit+'</span>';
+      html+='</div>';
+      if(t.note)html+='<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">📝 '+t.note+'</div>';
+      html+='<div style="font-size:10px;color:var(--muted);margin-bottom:10px;">Requested by '+t.requestedBy+' · '+fmtT(t.requestedAt)+' '+t.requestedAt.substring(0,10)+'</div>';
+      if(isAdmin){
+        html+='<div style="display:flex;gap:7px;">';
+        html+='<button data-id="'+t.id+'" onclick="approveInvTx(this.dataset.id,\'approve\')" style="flex:2;padding:8px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✓ Approve</button>';
+        html+='<button data-id="'+t.id+'" onclick="approveInvTx(this.dataset.id,\'reject\')" style="flex:1;padding:8px;background:#ef4444;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✕ Reject</button>';
+        html+='</div>';
+      }
+      html+='</div>';
+    });
+    el.innerHTML=html;
+    return;
+  }
+
+  var list=items;
+  if(tab==='chemical'||tab==='sparepart')list=items.filter(function(i){return i.category===tab;});
+  list=list.slice().sort(function(a,b){return a.name.localeCompare(b.name);});
+
+  if(!list.length){
+    el.innerHTML='<div class="empty-s"><div class="ei">📦</div>No items yet.'+(isAdmin?' Tap + to add one.':'')+'</div>';
+    return;
+  }
+
+  var html='';
+  list.forEach(function(item){
+    var cat=INV_CATS.find(function(c){return c.id===item.category;})||{icon:'📦',label:item.category,color:'#64748b'};
+    var bal=invBalance(item.id);
+    var low=bal<=0;
+    html+='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--sh);">';
+    html+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">';
+    html+='<span style="background:'+cat.color+';color:#fff;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;">'+cat.icon+' '+cat.label+'</span>';
+    html+='<span style="font-size:14px;font-weight:700;">'+item.name+'</span>';
+    html+='<span style="margin-left:auto;font-family:var(--mono);font-weight:800;font-size:16px;color:'+(low?'#dc2626':'#16a34a')+';">'+bal+'</span>';
+    html+='<span style="font-size:11px;color:var(--muted);">'+item.unit+'</span>';
+    html+='</div>';
+    html+='<div style="display:flex;gap:7px;flex-wrap:wrap;">';
+    html+='<button data-id="'+item.id+'" onclick="openInvStockModal(this.dataset.id,\'in\')" style="flex:1;min-width:90px;padding:8px;background:#0891b2;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">📥 Stock In</button>';
+    html+='<button data-id="'+item.id+'" onclick="openInvStockModal(this.dataset.id,\'out\')" style="flex:1;min-width:90px;padding:8px;background:#ea580c;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">📤 Stock Out</button>';
+    if(isAdmin){
+      html+='<button data-id="'+item.id+'" onclick="openInvItemModal(this.dataset.id)" style="padding:8px 10px;background:#f1f5f9;color:#374151;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">✏️</button>';
+      html+='<button data-id="'+item.id+'" onclick="deleteInvItem(this.dataset.id)" style="padding:8px 10px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">🗑</button>';
+    }
     html+='</div></div>';
   });
   el.innerHTML=html;
@@ -3839,9 +4107,9 @@ function renderCleaningPanel(){
     if(done){
       html+='<span class="badge" style="display:inline-block;text-align:center;background:#dcfce7;color:#16a34a;padding:6px 10px;border-radius:20px;font-size:11px;font-weight:700;">✓ DONE</span>';
     } else if(overdue){
-      html+='<span data-aid="'+aid+'" class="badge" style="display:inline-block;text-align:center;background:#fee2e2;color:#dc2626;padding:8px 10px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;" onclick="clTickArea(this.dataset.aid)">⚠ Tap Done</span>';
+      html+='<span data-aid="'+aid+'" class="badge" style="display:inline-block;text-align:center;background:#fee2e2;color:#dc2626;padding:8px 10px;border-radius:20px;font-size:12px;font-weight:700;">⚠ Tap Done</span>';
     } else {
-      html+='<span data-aid="'+aid+'" class="badge" style="display:inline-block;text-align:center;background:#e0f2fe;color:#0369a1;padding:8px 10px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;" onclick="clTickArea(this.dataset.aid)">☐ Tap Done</span>';
+      html+='<span data-aid="'+aid+'" class="badge" style="display:inline-block;text-align:center;background:#e0f2fe;color:#0369a1;padding:8px 10px;border-radius:20px;font-size:12px;font-weight:700;">☐ Tap Done</span>';
     }
     html+='</div></div>';
   });
@@ -7337,15 +7605,16 @@ function sTab(tab,btn){
   curSupTab=tab;
   document.querySelectorAll('#pg-sup .tabs .tb').forEach(function(b){b.classList.remove('on');});
   btn.classList.add('on');
-  ['dash','jobs','custs','staff','issues','users','times','cleaning','boiler','ops','perf','leave','finance','attend','done'].forEach(function(t){
+  ['dash','jobs','custs','staff','issues','users','times','cleaning','boiler','ops','perf','leave','finance','attend','inventory','done'].forEach(function(t){
     var el=document.getElementById('st-'+t);
     if(el)el.style.display=t===tab?'block':'none';
   });
   var fab=document.getElementById('fab');
-  fab.style.display=(tab==='jobs'||tab==='custs'||tab==='issues'||tab==='users')?'flex':'none';
+  fab.style.display=(tab==='jobs'||tab==='custs'||tab==='issues'||tab==='users'||tab==='inventory')?'flex':'none';
   if(tab==='jobs'){fab.onclick=openExpressModal;renderJobs();}
   else if(tab==='custs'){fab.onclick=openCustModal;renderCusts();}
   else if(tab==='issues'){fab.onclick=openIssModal;renderIssues();}
+  else if(tab==='inventory'){fab.onclick=function(){openInvItemModal();};renderInventory();}
   else if(tab==='users'){fab.onclick=openUserModal;renderUsers();renderLoginLog();renderBackupStatus();renderLicensePanel();renderDeviceApprovals();renderDeviceManagement();}
   if(tab==='times'){
     renderTimesPanel();renderTimesCleanAreas();renderOpsMgrDropdown();
