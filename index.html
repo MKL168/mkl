@@ -715,7 +715,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
   <div style="display:flex;border-bottom:2px solid var(--border);margin-bottom:12px;flex-wrap:wrap;">
     <button class="tb on" id="att-tab-sum" onclick="attTab('summary',this)" style="font-size:12px;">📊 Summary</button>
     <button class="tb" id="att-tab-ot" onclick="attTab('ot',this)" style="font-size:12px;">⏰ Overtime</button>
-    <button class="tb" id="att-tab-abs" onclick="attTab('absence',this)" style="font-size:12px;">❌ Absence</button>
+    <button class="tb" id="att-tab-abs" onclick="attTab('abs',this)" style="font-size:12px;">❌ Absence</button>
   </div>
 
   <!-- Summary -->
@@ -986,6 +986,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
     </div>
     <div class="ff"><label class="fl">Specifically</label><div id="iss-subs"></div></div>
     <div class="ff" id="iss-client-wrap" style="display:none;"><label class="fl">Client Name</label><input class="fi" id="iss-client" type="text" placeholder="Enter customer / client name…" maxlength="60"></div>
+    <div class="ff"><label class="fl">Raised By (staff who reported it)</label><select class="fs" id="iss-raiser"><option value="">— Not specified —</option></select></div>
     <div class="ff"><label class="fl">Title</label><input class="fi" id="iss-ttl" type="text" placeholder="Brief description…" maxlength="60" oninput="this.dataset.autofill='0'"></div>
     <div class="ff"><label class="fl">Details</label><input class="fi" id="iss-det" type="text" placeholder="More info…" maxlength="200"></div>
     <div class="fr">
@@ -1473,6 +1474,15 @@ function openIssModal(){
   var ttl=document.getElementById('iss-ttl');if(ttl)ttl.dataset.autofill='1';
   var pri=document.getElementById('iss-pri');if(pri)pri.value='medium';
   var wrap=document.getElementById('iss-client-wrap');if(wrap)wrap.style.display='none';
+  var raiserEl=document.getElementById('iss-raiser');
+  if(raiserEl){
+    raiserEl.innerHTML='<option value="">— Not specified —</option>';
+    getAttendPeople().forEach(function(p){
+      var opt=document.createElement('option');
+      opt.value=p.name;opt.textContent=p.name+(p.role?' ('+p.role+')':'');
+      raiserEl.appendChild(opt);
+    });
+  }
   renderIssCats();
   renderIssSubs();
   var m=document.getElementById('m-issue');if(m)m.classList.add('on');
@@ -1525,6 +1535,7 @@ function saveIssue(){
     details:(document.getElementById('iss-det')||{}).value?document.getElementById('iss-det').value.trim():'',
     priority:(document.getElementById('iss-pri')||{}).value||'medium',
     assignedTo:(document.getElementById('iss-asgn')||{}).value?document.getElementById('iss-asgn').value.trim():'',
+    raisedBy:(document.getElementById('iss-raiser')||{}).value||'',
     status:'open',
     createdAt:new Date().toISOString(),
     createdBy:CU?(CU.name||CU.username):'Unknown',
@@ -1591,7 +1602,10 @@ function renderIssues(){
     html+='<div style="font-size:14px;font-weight:700;margin-bottom:3px;">'+iss.title+'</div>';
     if(iss.client)html+='<div style="font-size:11px;color:#6366f1;font-weight:600;margin-bottom:3px;">🤝 '+iss.client+'</div>';
     if(iss.details)html+='<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">'+iss.details+'</div>';
-    html+='<div style="font-size:10px;color:var(--muted);margin-bottom:8px;">Logged by '+iss.createdBy+' · '+fmtT(iss.createdAt)+' '+iss.createdAt.substring(0,10)+(iss.assignedTo?' · Assigned to <b>'+iss.assignedTo+'</b>':'')+'</div>';
+    html+='<div style="font-size:10px;color:var(--muted);margin-bottom:8px;">'
+      +(iss.raisedBy?'Raised by <b style="color:#374151;">'+iss.raisedBy+'</b> · ':'')
+      +'Logged by '+iss.createdBy+' · '+fmtT(iss.createdAt)+' '+iss.createdAt.substring(0,10)
+      +(iss.assignedTo?' · Assigned to <b>'+iss.assignedTo+'</b>':'')+'</div>';
 
     html+='<div style="display:flex;gap:7px;flex-wrap:wrap;">';
     if(iss.status==='open')html+='<button data-id="'+iss.id+'" onclick="setIssueStatus(this.dataset.id,\'progress\')" style="flex:1;min-width:100px;padding:8px;background:#f59e0b;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">▶ Start Progress</button>';
@@ -5936,7 +5950,11 @@ function renderExpenseTable(expenses,type){
 
 // ═══ ATTENDANCE ═════════════════════════════════════════════════════════════
 
-function getOTs(){return S.get('ot_records')||[];}
+function getOTs(){
+  var ots=S.get('ot_records')||[];
+  ots.forEach(function(o){if(!o.approvals)o.approvals=[];});
+  return ots;
+}
 function saveOTs(d){S.set('ot_records',d);}
 function getAbsences(){return S.get('absences')||[];}
 function saveAbsences(d){S.set('absences',d);}
