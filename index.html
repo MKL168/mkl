@@ -873,6 +873,22 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
   </div>
 </div>
 
+<!-- INVENTORY BULK ADD ITEMS MODAL -->
+<div class="mbg" id="m-inv-bulk-items">
+  <div class="modal" style="max-width:720px;">
+    <div class="mh"><span>➕ Add Multiple Items</span><button class="mc" onclick="closeM('m-inv-bulk-items')">✕</button></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Fill in as many rows as you need — blank rows are skipped automatically.</div>
+    <div class="htable-wrap"><div style="min-width:620px;">
+      <div style="display:grid;grid-template-columns:110px 1.3fr 90px 100px 100px 30px;gap:6px;margin-bottom:6px;font-size:10px;font-weight:700;color:var(--muted);">
+        <div>Category</div><div>Item Name</div><div>Unit</div><div>Beginning</div><div>Reorder Lvl</div><div></div>
+      </div>
+      <div id="inv-bulk-rows"></div>
+    </div></div>
+    <button onclick="addInvBulkRow()" style="margin-top:8px;padding:7px 14px;background:#f1f5f9;color:#374151;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">+ Add Row</button>
+    <div class="mact"><button class="mbtn-c" onclick="closeM('m-inv-bulk-items')">Cancel</button><button class="mbtn-s" onclick="saveInvBulkItems()">Save All Items</button></div>
+  </div>
+</div>
+
 <!-- INVENTORY STOCK REQUEST MODAL -->
 <div class="mbg" id="m-inv-stock">
   <div class="modal" style="max-width:420px;">
@@ -1803,6 +1819,53 @@ function saveInvItem(){
   closeM('m-inv-item');
   renderInventory();
 }
+
+var _invBulkRowCount=0;
+function openInvBulkItemsModal(){
+  document.getElementById('inv-bulk-rows').innerHTML='';
+  _invBulkRowCount=0;
+  for(var i=0;i<5;i++)addInvBulkRow();
+  document.getElementById('m-inv-bulk-items').classList.add('on');
+}
+function addInvBulkRow(){
+  var idx=_invBulkRowCount++;
+  var wrap=document.getElementById('inv-bulk-rows');
+  var row=document.createElement('div');
+  row.style.cssText='display:grid;grid-template-columns:110px 1.3fr 90px 100px 100px 30px;gap:6px;margin-bottom:6px;align-items:center;';
+  row.innerHTML=
+    '<select id="inv-bulk-cat-'+idx+'" style="padding:6px 6px;border:1.5px solid var(--border);border-radius:6px;font-size:11px;">'
+      +'<option value="chemical">🧪 Chemical</option><option value="sparepart">🔩 Sparepart</option></select>'
+    +'<input id="inv-bulk-name-'+idx+'" type="text" placeholder="Item name" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;">'
+    +'<input id="inv-bulk-unit-'+idx+'" type="text" placeholder="Unit" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;">'
+    +'<input id="inv-bulk-begin-'+idx+'" type="number" placeholder="0" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;">'
+    +'<input id="inv-bulk-reorder-'+idx+'" type="number" placeholder="0" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;">'
+    +'<button onclick="this.parentElement.remove()" title="Remove row" style="background:none;border:none;color:#dc2626;font-size:16px;cursor:pointer;">✕</button>';
+  wrap.appendChild(row);
+}
+function saveInvBulkItems(){
+  var items=getInvItems();
+  var count=0;
+  for(var i=0;i<_invBulkRowCount;i++){
+    var nameEl=document.getElementById('inv-bulk-name-'+i);
+    if(!nameEl)continue; // row was removed by the user
+    var name=nameEl.value.trim();
+    if(!name)continue; // blank rows are skipped
+    var cat=document.getElementById('inv-bulk-cat-'+i).value;
+    var unit=document.getElementById('inv-bulk-unit-'+i).value.trim()||'units';
+    var begin=parseFloat(document.getElementById('inv-bulk-begin-'+i).value)||0;
+    var reorderLevel=parseFloat(document.getElementById('inv-bulk-reorder-'+i).value)||0;
+    items.push({id:'inv_'+Date.now().toString(36)+Math.random().toString(36).substring(2,6)+count,
+      name:name,category:cat,unit:unit,beginningBalance:begin,reorderLevel:reorderLevel,
+      createdAt:new Date().toISOString(),createdBy:CU?(CU.name||CU.username):'Unknown'});
+    count++;
+  }
+  if(!count){toast('No items entered',true);return;}
+  saveInvItems(items);
+  closeM('m-inv-bulk-items');
+  toast('✓ '+count+' item'+(count!==1?'s':'')+' added');
+  renderInventory();
+}
+
 function deleteInvItem(id){
   if(!CU||(CU.role!=='owner'&&CU.role!=='admin')){toast('Admin access required',true);return;}
   var item=getInvItems().find(function(i){return i.id===id;});
@@ -1980,6 +2043,36 @@ function invSubmitFromRow(itemId,type){
   renderInventory();
 }
 
+// Submits every row in the Addition/Request table that has a quantity
+// entered, all at once, instead of one row-submit click per item.
+function invSubmitAllRows(type){
+  var items=getInvItems();
+  var tx=getInvTx();
+  var count=0,skippedOver=0;
+  items.forEach(function(item,idx){
+    var qtyEl=document.getElementById('inv-row-qty-'+item.id);
+    if(!qtyEl)return;
+    var qty=parseFloat(qtyEl.value);
+    if(!qty||qty<=0)return;
+    var noteEl=document.getElementById('inv-row-note-'+item.id);
+    if(type==='out'&&qty>invBalance(item.id))skippedOver++;
+    tx.unshift({
+      id:'invtx_'+Date.now().toString(36)+Math.random().toString(36).substring(2,6)+idx,
+      itemId:item.id,type:type,qty:qty,
+      note:noteEl?noteEl.value.trim():'',
+      requestedBy:CU?(CU.name||CU.username):'Unknown',
+      requestedAt:new Date().toISOString(),
+      status:'pending',
+    });
+    count++;
+  });
+  if(!count){toast('Enter a quantity for at least one item',true);return;}
+  saveInvTx(tx);
+  toast('✓ '+count+' '+(type==='in'?'addition':'request')+(count!==1?'s':'')+' submitted — awaiting approval'
+    +(skippedOver?' ('+skippedOver+' exceed current balance, still sent for review)':''));
+  renderInventory();
+}
+
 function invToggleShowHidden(cb){
   window._invShowHidden=cb.checked;
   renderInventory();
@@ -2019,8 +2112,11 @@ function renderInventory(){
   // ── 1. ITEM LIST — the master catalog everything else links to, as a table ─
   if(tab==='items'){
     var list=items.slice().sort(function(a,b){return a.name.localeCompare(b.name);});
-    var headerHtml='<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding:0 2px 10px;cursor:pointer;">'
-      +'<input type="checkbox" '+(showHidden?'checked':'')+' onchange="invToggleShowHidden(this)"> Show hidden items ('+hiddenCount+')</label>';
+    var headerHtml='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:0 2px 10px;">'
+      +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;">'
+      +'<input type="checkbox" '+(showHidden?'checked':'')+' onchange="invToggleShowHidden(this)"> Show hidden items ('+hiddenCount+')</label>'
+      +(isAdmin?'<button onclick="openInvBulkItemsModal()" style="padding:7px 14px;background:#6366f1;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">➕ Add Multiple Items</button>':'')
+      +'</div>';
     if(!list.length){
       el.innerHTML=headerHtml+'<div class="empty-s"><div class="ei">📦</div>No items'+(showHidden?'':' to show')+'.'+(isAdmin?' Tap + to add one.':'')+'</div>';
       return;
@@ -2102,7 +2198,10 @@ function renderInventory(){
     var type=tab==='addition'?'in':'out';
     if(!items.length){el.innerHTML='<div class="empty-s"><div class="ei">📦</div>Add items to the Item List first.</div>';return;}
     var html3='<div class="htable-wrap"><div style="min-width:640px;">';
-    html3+='<div style="background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">'+(type==='in'?'📥 Request Addition':'📤 Request Stock Out')+'</div>';
+    html3+='<div style="display:flex;align-items:center;gap:8px;background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">';
+    html3+='<div style="flex:1;">'+(type==='in'?'📥 Request Addition':'📤 Request Stock Out')+'</div>';
+    html3+='<button onclick="invSubmitAllRows(\''+type+'\')" style="padding:6px 14px;background:'+(type==='in'?'#0891b2':'#ea580c')+';color:#fff;border:none;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;">✓ Submit All Entered</button>';
+    html3+='</div>';
     html3+='<div style="display:grid;grid-template-columns:1.2fr 80px 90px 1fr 100px;background:#334155;color:#94a3b8;font-size:10px;font-weight:700;padding:6px 12px;gap:6px;">';
     html3+='<div>Item</div><div style="text-align:right;">Balance</div><div>Qty</div><div>Note</div><div></div>';
     html3+='</div>';
