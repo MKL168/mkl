@@ -275,6 +275,26 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
   #pg-tamper{position:fixed;inset:0;background:#450a0a;z-index:10000;display:none;align-items:center;justify-content:center;flex-direction:column;padding:20px;}
   .tamp-card{background:#7f1d1d;border-radius:16px;padding:32px;max-width:420px;width:100%;border:2px solid #dc2626;text-align:center;}
 
+  /* MOBILE-FRIENDLY ROW — replaces fixed-pixel grid columns that overflow on
+     phones and push action buttons off-screen. On a wide screen this reads
+     as label-left / action-right; on a narrow screen the action simply wraps
+     to its own line, full-size, instead of being squeezed or clipped. */
+  .mrow{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:11px 12px;border-bottom:1px solid #e2e8f0;}
+  .mrow-main{flex:1 1 170px;min-width:0;}
+  .mrow-title{font-size:13px;font-weight:700;}
+  .mrow-sub{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5;}
+  .mrow-sub b,.mrow-sub strong{color:inherit;}
+  .mrow-action{flex:0 0 auto;margin-left:auto;}
+  .mrow-action button,.mrow-action .badge{width:100%;min-width:110px;}
+  @media (max-width:480px){
+    .mrow-action{flex-basis:100%;margin-left:0;}
+    .mrow-action button,.mrow-action .badge{width:100%;}
+  }
+  /* Dense read-only history/summary tables keep their grid layout (many thin
+     columns of checkmarks read fine dense) but scroll horizontally within
+     their own box on a phone instead of breaking the page layout. */
+  .htable-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -815,6 +835,17 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
         <textarea id="adv-reason" class="fi" rows="3" placeholder="Explain the reason for the advance..." style="padding:8px 10px;resize:vertical;"></textarea>
       </div>
       <button onclick="submitAdvance()" style="width:100%;padding:11px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans);">Submit Advance Request</button>
+    </div>
+  </div>
+</div>
+
+<!-- WATER LEVEL MODAL -->
+<div class="mbg" id="m-waterlevel">
+  <div class="modal" style="max-width:420px;">
+    <div class="mh"><span id="wlvl-title">💧 Water Level</span><button class="mc" onclick="closeM('m-waterlevel')">✕</button></div>
+    <div style="padding:2px 4px 14px;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;text-align:center;">Tap the water level — 1 (lowest) to 10 (highest)</div>
+      <div id="wlvl-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;"></div>
     </div>
   </div>
 </div>
@@ -3236,30 +3267,27 @@ function renderWorkerCleaning(){
   if(!areas.length){wrap.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted);">No cleaning areas configured.</div>';return;}
 
   var html='<div style="background:var(--white);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;margin-bottom:16px;">';
-  html+='<div style="display:grid;grid-template-columns:1fr 90px 100px 90px;background:#1e293b;color:#fff;font-size:11px;font-weight:700;padding:8px 12px;gap:8px;">';
-  html+='<div>Area</div><div style="text-align:center;">Target</div><div style="text-align:center;">Done At</div><div style="text-align:center;">Action</div>';
-  html+='</div>';
 
-  areas.forEach(function(aid,ri){
+  areas.forEach(function(aid){
     var area=CLEAN_AREAS.find(function(a){return a.id===aid;});if(!area)return;
     var entry=log.areas[aid];
     var done=!!(entry&&entry.done);
     var overdue=!done&&isPastTarget;
-    var bg=done?'#f0fdf4':overdue?'#fef2f2':ri%2===0?'#fff':'#f8fafc';
+    var bg=done?'#f0fdf4':overdue?'#fef2f2':'#fff';
 
-    html+='<div style="display:grid;grid-template-columns:1fr 90px 100px 90px;padding:11px 12px;gap:8px;align-items:center;background:'+bg+';border-bottom:1px solid #e2e8f0;">';
-    html+='<div style="font-size:13px;font-weight:700;">'+(area.icon||'')+' '+area.label+'</div>';
-    html+='<div style="text-align:center;font-family:var(--mono);font-size:12px;color:#06b6d4;font-weight:600;">'+settings.targetTime+'</div>';
-    html+='<div style="text-align:center;">';
-    if(done)html+='<span style="font-family:var(--mono);font-size:11px;color:#16a34a;">'+fmtT(entry.time)+'</span>';
-    else if(overdue)html+='<span style="font-size:10px;color:#dc2626;font-weight:700;">OVERDUE</span>';
-    else html+='<span style="color:#94a3b8;font-size:12px;">—</span>';
+    html+='<div class="mrow" style="background:'+bg+';">';
+    html+='<div class="mrow-main">';
+    html+='<div class="mrow-title">'+(area.icon||'')+' '+area.label+'</div>';
+    html+='<div class="mrow-sub">Target <b style="color:#06b6d4;">'+settings.targetTime+'</b>'
+      +(done?' &nbsp;·&nbsp; Done <b style="color:#16a34a;">'+fmtT(entry.time)+'</b>'
+       :overdue?' &nbsp;·&nbsp; <span style="color:#dc2626;font-weight:700;">OVERDUE</span>':'')
+      +'</div>';
     html+='</div>';
-    html+='<div style="text-align:center;">';
+    html+='<div class="mrow-action">';
     if(done){
-      html+='<span style="background:#dcfce7;color:#16a34a;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">✓</span>';
+      html+='<span class="badge" style="display:inline-block;text-align:center;background:#dcfce7;color:#16a34a;padding:6px 10px;border-radius:20px;font-size:11px;font-weight:700;">✓ Done</span>';
     } else {
-      html+='<button data-aid="'+aid+'" onclick="wClTickArea(this.dataset.aid)" style="background:'+(overdue?'#dc2626':'#06b6d4')+';color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">✓ Done</button>';
+      html+='<button data-aid="'+aid+'" onclick="wClTickArea(this.dataset.aid)" style="background:'+(overdue?'#dc2626':'#06b6d4')+';color:#fff;border:none;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;">✓ Done</button>';
     }
     html+='</div></div>';
   });
@@ -3308,8 +3336,9 @@ function renderWorkerBoiler(){
 
   var steps=['clean','start','serving','stop'];
   var doneSteps=steps.filter(function(s){return log[s]&&log[s].time;}).length;
+  var wlvlDone=(log.waterLevelStart?1:0)+(log.waterLevelEnd?1:0);
   var chips=document.getElementById('wbl-status-chips');
-  if(chips)chips.innerHTML=chip(doneSteps+'/4','Steps','var(--ok)')+chip(feeds.length,'Feeds','#f97316')+chip(waterChecks.length,'Water','#2563eb')+chip(smokeChecks.length,'Smoke','#374151');
+  if(chips)chips.innerHTML=chip(doneSteps+'/4','Steps','var(--ok)')+chip(wlvlDone+'/2','Water Lvl',wlvlDone===2?'var(--ok)':'var(--warn)')+chip(feeds.length,'Feeds','#f97316')+chip(waterChecks.length,'Water','#2563eb')+chip(smokeChecks.length,'Smoke','#374151');
 
   var td=document.getElementById('wbl-target-display');
   if(td){
@@ -3337,20 +3366,44 @@ function renderWorkerBoiler(){
     var isNext=!done&&stepDefs.slice(0,i).every(function(s){return log[s.id]&&log[s.id].time;});
     var locked=!done&&!isNext;
     var bg=done?'#f0fdf4':step.alert?'#fef2f2':isNext?'#fefce8':'#f8fafc';
-    html+='<div style="display:flex;align-items:center;gap:12px;padding:12px;background:'+bg+';border-bottom:1px solid #e2e8f0;">';
-    html+='<div style="width:30px;height:30px;border-radius:50%;background:'+(done?'#16a34a':locked?'#e2e8f0':step.color)+';color:'+(locked?'#94a3b8':'#fff')+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">'+(done?'✓':(i+1))+'</div>';
-    html+='<div style="flex:1;"><div style="font-size:13px;font-weight:700;color:'+(locked?'#94a3b8':'inherit')+';">'+step.icon+' '+step.label+'</div>';
-    if(done)html+='<div style="font-size:11px;color:#16a34a;">'+fmtT(entry.time)+' — '+(entry.worker||'')+'</div>';
-    else if(step.alert)html+='<div style="font-size:11px;color:#dc2626;font-weight:700;">⚠ '+startMinLate+' min late!</div>';
+    html+='<div class="mrow" style="background:'+bg+';">';
+    html+='<div style="width:30px;height:30px;flex:0 0 auto;border-radius:50%;background:'+(done?'#16a34a':locked?'#e2e8f0':step.color)+';color:'+(locked?'#94a3b8':'#fff')+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">'+(done?'✓':(i+1))+'</div>';
+    html+='<div class="mrow-main">';
+    html+='<div class="mrow-title" style="color:'+(locked?'#94a3b8':'inherit')+';">'+step.icon+' '+step.label+'</div>';
+    if(done)html+='<div class="mrow-sub" style="color:#16a34a;">'+fmtT(entry.time)+' — '+(entry.worker||'')+'</div>';
+    else if(step.alert)html+='<div class="mrow-sub" style="color:#dc2626;font-weight:700;">⚠ '+startMinLate+' min late!</div>';
     html+='</div>';
+    html+='<div class="mrow-action">';
     if(done){
-      html+='<span style="background:#dcfce7;color:#16a34a;padding:4px 8px;border-radius:20px;font-size:10px;font-weight:700;">✓ DONE</span>';
+      html+='<span class="badge" style="display:inline-block;text-align:center;background:#dcfce7;color:#16a34a;padding:6px 10px;border-radius:20px;font-size:11px;font-weight:700;">✓ DONE</span>';
     } else if(!locked){
-      html+='<button data-step="'+step.id+'" onclick="wBlAction(this.dataset.step)" style="background:'+step.color+';color:#fff;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;">'+step.icon+' Record</button>';
+      html+='<button data-step="'+step.id+'" onclick="wBlAction(this.dataset.step)" style="background:'+step.color+';color:#fff;border:none;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;">'+step.icon+' Record</button>';
     } else {
-      html+='<span style="color:#cbd5e1;font-size:11px;">Locked</span>';
+      html+='<span class="badge" style="display:inline-block;text-align:center;color:#cbd5e1;font-size:11px;">Locked</span>';
     }
+    html+='</div></div>';
+  });
+  html+='</div>';
+
+  // Daily water level readings
+  html+='<div style="background:var(--white);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;margin-bottom:12px;">';
+  html+='<div style="background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">💧 Water Level Readings (1–10)</div>';
+  [['start','Morning Reading'],['end','Evening Reading']].forEach(function(pair){
+    var which=pair[0],label=pair[1];
+    var entry=log['waterLevel'+(which==='start'?'Start':'End')];
+    var done=!!entry;
+    html+='<div class="mrow" style="background:'+(done?'#eff6ff':'#fff')+';">';
+    html+='<div class="mrow-main">';
+    html+='<div class="mrow-title">💧 '+label+'</div>';
+    html+='<div class="mrow-sub">'+(done?'Level <b style="color:#1d4ed8;">'+entry.value+'/10</b> &nbsp;·&nbsp; '+fmtT(entry.time):'Not recorded yet')+'</div>';
     html+='</div>';
+    html+='<div class="mrow-action">';
+    if(done){
+      html+='<button data-w="'+which+'" onclick="openWaterLevelModal(this.dataset.w)" style="background:#e0e7ff;color:#4338ca;border:none;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;">↺ Re-enter</button>';
+    } else {
+      html+='<button data-w="'+which+'" onclick="openWaterLevelModal(this.dataset.w)" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;">💧 Enter Level</button>';
+    }
+    html+='</div></div>';
   });
   html+='</div>';
 
@@ -3375,11 +3428,12 @@ function renderWorkerBoiler(){
       var overdue=m.left<=0;
       var bg=overdue?'#fef2f2':m.left<=10?'#fffbeb':'#fff';
       var sc=overdue?'#dc2626':m.left<=10?'#d97706':'#16a34a';
-      html+='<div style="display:flex;align-items:center;gap:12px;padding:12px;background:'+bg+';border-bottom:1px solid #e2e8f0;">';
-      html+='<div style="flex:1;"><div style="font-size:13px;font-weight:700;">'+m.label+'</div>';
-      html+='<div style="font-size:11px;color:var(--muted);">Every '+m.interval+' min &nbsp;|&nbsp; '+m.count+' today</div></div>';
-      html+='<span style="font-size:13px;font-weight:700;color:'+sc+';">'+(overdue?'⚠ OVERDUE':m.left+' min')+'</span>';
-      html+='<button data-step="'+m.id+'" onclick="wBlAction(this.dataset.step)" style="background:'+m.color+';color:#fff;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;">✓ OK</button>';
+      html+='<div class="mrow" style="background:'+bg+';">';
+      html+='<div class="mrow-main">';
+      html+='<div class="mrow-title">'+m.label+'</div>';
+      html+='<div class="mrow-sub">Every '+m.interval+' min &nbsp;·&nbsp; '+m.count+' today &nbsp;·&nbsp; <span style="color:'+sc+';font-weight:700;">'+(overdue?'⚠ OVERDUE':m.left+' min left')+'</span></div>';
+      html+='</div>';
+      html+='<div class="mrow-action"><button data-step="'+m.id+'" onclick="wBlAction(this.dataset.step)" style="background:'+m.color+';color:#fff;border:none;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;">✓ OK</button></div>';
       html+='</div>';
     });
     html+='</div>';
@@ -3399,8 +3453,8 @@ function renderWorkerOps(){
 
   var html='<div style="background:var(--white);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;margin-bottom:12px;">';
   html+='<div style="background:#0ea5e9;color:#fff;font-size:13px;font-weight:700;padding:10px 14px;">🏢 Operations — '+todayStr()+'</div>';
-  html+='<div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:'+(log.opened?'#f0fdf4':'#fff')+'">';
-  html+='<div style="flex:1;"><div style="font-size:13px;font-weight:700;">Opening</div><div style="font-size:11px;color:var(--muted);">Agreed: <strong style="font-family:var(--mono);color:#0ea5e9;">'+settings.openTime+'</strong></div>';
+  html+='<div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;flex-wrap:wrap;gap:10px;background:'+(log.opened?'#f0fdf4':'#fff')+'">';
+  html+='<div style="flex:1 1 160px;min-width:0;"><div style="font-size:13px;font-weight:700;">Opening</div><div style="font-size:11px;color:var(--muted);">Agreed: <strong style="font-family:var(--mono);color:#0ea5e9;">'+settings.openTime+'</strong></div>';
   if(log.opened)html+='<div style="font-size:11px;color:#16a34a;">✓ '+fmtT(log.opened.time)+' by '+log.opened.worker+(log.openLate?' ('+log.openLateMin+'m late)':'')+'</div>';
   html+='</div>';
   if(log.opened)html+='<span style="background:#dcfce7;color:#16a34a;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;">✓ DONE</span>';
@@ -3410,26 +3464,28 @@ function renderWorkerOps(){
 
   html+='<div style="background:var(--white);border-radius:var(--r);border:1px solid '+(isPastClose&&!log.closed?'#fca5a5':'var(--border)')+';box-shadow:var(--sh);overflow:hidden;">';
   html+='<div style="background:#6366f1;color:#fff;font-size:13px;font-weight:700;padding:10px 14px;">🔒 Closing Checklist — must close by '+settings.closeTime+'</div>';
-  OPS_CHECKS.forEach(function(c,ri){
+  OPS_CHECKS.forEach(function(c){
     var entry=log.checklist&&log.checklist[c.id];
     var done=!!(entry&&entry.done);
-    html+='<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:'+(done?'#f0fdf4':ri%2===0?'#fff':'#f8fafc')+';border-bottom:1px solid #e2e8f0;">';
-    html+='<div style="flex:1;"><div style="font-size:13px;font-weight:700;">'+c.icon+' '+c.label+'</div>';
-    if(done)html+='<div style="font-size:11px;color:#16a34a;">✓ '+fmtT(entry.time)+' by '+entry.worker+'</div>';
+    html+='<div class="mrow" style="background:'+(done?'#f0fdf4':'#fff')+';">';
+    html+='<div class="mrow-main">';
+    html+='<div class="mrow-title">'+c.icon+' '+c.label+'</div>';
+    if(done)html+='<div class="mrow-sub" style="color:#16a34a;">✓ '+fmtT(entry.time)+' by '+entry.worker+'</div>';
     html+='</div>';
-    if(done)html+='<span style="background:#dcfce7;color:#16a34a;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;">✓</span>';
-    else html+='<button data-chk="'+c.id+'" onclick="opsAction(this.dataset.chk)" style="background:#6366f1;color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;">✓ Done</button>';
-    html+='</div>';
+    html+='<div class="mrow-action">';
+    if(done)html+='<span class="badge" style="display:inline-block;text-align:center;background:#dcfce7;color:#16a34a;padding:6px 10px;border-radius:20px;font-size:11px;font-weight:700;">✓ Done</span>';
+    else html+='<button data-chk="'+c.id+'" onclick="opsAction(this.dataset.chk)" style="background:#6366f1;color:#fff;border:none;border-radius:7px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;">✓ Done</button>';
+    html+='</div></div>';
   });
-  html+='<div style="padding:12px 14px;background:'+(log.closed?'#f0fdf4':isPastClose?'#fef2f2':'#f8fafc')+';display:flex;align-items:center;gap:12px;">';
+  html+='<div style="padding:12px 14px;background:'+(log.closed?'#f0fdf4':isPastClose?'#fef2f2':'#f8fafc')+';display:flex;align-items:center;flex-wrap:wrap;gap:10px;">';
   if(log.closed){
-    html+='<div style="flex:1;font-size:13px;font-weight:700;color:#16a34a;">🔒 Closed at '+fmtT(log.closed.time)+' by '+log.closed.worker+(log.closeLate?' ('+log.closeLateMin+'m late)':'')+'</div>';
+    html+='<div style="flex:1 1 160px;font-size:13px;font-weight:700;color:#16a34a;">🔒 Closed at '+fmtT(log.closed.time)+' by '+log.closed.worker+(log.closeLate?' ('+log.closeLateMin+'m late)':'')+'</div>';
     html+='<span style="background:#dcfce7;color:#16a34a;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;">✓ CLOSED</span>';
   } else if(allChkDone){
-    html+='<div style="flex:1;font-size:12px;color:#16a34a;font-weight:600;">✓ All done — ready to close</div>';
+    html+='<div style="flex:1 1 160px;font-size:12px;color:#16a34a;font-weight:600;">✓ All done — ready to close</div>';
         html+='<button data-act="close" onclick="opsAction(this.dataset.act)" style="background:#dc2626;color:#fff;border:none;border-radius:7px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;">🔒 Close Now</button>';
   } else {
-    html+='<div style="flex:1;font-size:12px;color:var(--muted);">Tick all items above first</div>';
+    html+='<div style="flex:1 1 160px;font-size:12px;color:var(--muted);">Tick all items above first</div>';
     html+='<button disabled style="background:#e2e8f0;color:#94a3b8;border:none;border-radius:7px;padding:10px 16px;font-size:13px;font-weight:600;">🔒 Close</button>';
   }
   html+='</div></div>';
@@ -3557,45 +3613,30 @@ function renderCleaningPanel(){
   }
 
   var html='<div style="background:var(--white);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;margin-bottom:16px;">';
-  // Table header
-  html+='<div style="display:grid;grid-template-columns:1fr 100px 120px 80px 120px;background:#1e293b;color:#fff;font-size:11px;font-weight:700;padding:8px 12px;gap:8px;align-items:center;">';
-  html+='<div>Area</div><div style="text-align:center;">Target</div><div style="text-align:center;">Done At</div><div style="text-align:center;">Worker</div><div style="text-align:center;">Action</div>';
-  html+='</div>';
+  html+='<div style="background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">🧹 Cleaning Areas</div>';
 
-  areas.forEach(function(aid,ri){
+  areas.forEach(function(aid){
     var area=CLEAN_AREAS.find(function(a){return a.id===aid;});if(!area)return;
     var entry=log.areas[aid];
     var done=!!(entry&&entry.done);
     var overdue=!done&&isPastTarget;
-    var bg=done?'#f0fdf4':overdue?'#fef2f2':ri%2===0?'#fff':'#f8fafc';
-    var border=done?'#86efac':overdue?'#fca5a5':'#e2e8f0';
+    var bg=done?'#f0fdf4':overdue?'#fef2f2':'#fff';
 
-    html+='<div data-aid="'+aid+'" style="display:grid;grid-template-columns:1fr 100px 120px 80px 120px;padding:10px 12px;gap:8px;align-items:center;background:'+bg+';border-bottom:1px solid '+border+';cursor:'+(done?'default':'pointer')+'" '+(done?'':'onclick="clTickArea(this.dataset.aid)"')+'>';
-
-    // Area name
-    html+='<div style="font-size:13px;font-weight:700;">'+(area.icon||'')+'  '+area.label+'</div>';
-
-    // Target time
-    html+='<div style="text-align:center;font-family:var(--mono);font-size:12px;color:#06b6d4;font-weight:600;">'+settings.targetTime+'</div>';
-
-    // Done at
-    html+='<div style="text-align:center;">';
-    if(done)html+='<span style="font-family:var(--mono);font-size:11px;color:#16a34a;">'+fmtT(entry.time)+'</span>';
-    else if(overdue)html+='<span style="font-size:10px;color:#dc2626;font-weight:700;">OVERDUE</span>';
-    else html+='<span style="color:#94a3b8;font-size:12px;">—</span>';
+    html+='<div class="mrow" data-aid="'+aid+'" style="background:'+bg+';cursor:'+(done?'default':'pointer')+'" '+(done?'':'onclick="clTickArea(this.dataset.aid)"')+'>';
+    html+='<div class="mrow-main">';
+    html+='<div class="mrow-title">'+(area.icon||'')+' '+area.label+'</div>';
+    html+='<div class="mrow-sub">Target <b style="color:#06b6d4;">'+settings.targetTime+'</b>'
+      +(done?' &nbsp;·&nbsp; Done <b style="color:#16a34a;">'+fmtT(entry.time)+'</b> by <b style="color:#6366f1;">'+(entry.worker||'—')+'</b>'
+       :overdue?' &nbsp;·&nbsp; <span style="color:#dc2626;font-weight:700;">OVERDUE</span>':'')
+      +'</div>';
     html+='</div>';
-
-    // Worker
-    html+='<div style="text-align:center;font-size:11px;color:#6366f1;font-weight:600;">'+(done&&entry.worker?entry.worker:'—')+'</div>';
-
-    // Action / Status
-    html+='<div style="text-align:center;">';
+    html+='<div class="mrow-action">';
     if(done){
-      html+='<span style="background:#dcfce7;color:#16a34a;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">✓ DONE</span>';
+      html+='<span class="badge" style="display:inline-block;text-align:center;background:#dcfce7;color:#16a34a;padding:6px 10px;border-radius:20px;font-size:11px;font-weight:700;">✓ DONE</span>';
     } else if(overdue){
-      html+='<span data-aid="'+aid+'" style="background:#fee2e2;color:#dc2626;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;" onclick="clTickArea(this.dataset.aid)">⚠ Tap Done</span>';
+      html+='<span data-aid="'+aid+'" class="badge" style="display:inline-block;text-align:center;background:#fee2e2;color:#dc2626;padding:8px 10px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;" onclick="clTickArea(this.dataset.aid)">⚠ Tap Done</span>';
     } else {
-      html+='<span data-aid="'+aid+'" style="background:#e0f2fe;color:#0369a1;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;" onclick="clTickArea(this.dataset.aid)">☐ Tap Done</span>';
+      html+='<span data-aid="'+aid+'" class="badge" style="display:inline-block;text-align:center;background:#e0f2fe;color:#0369a1;padding:8px 10px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;" onclick="clTickArea(this.dataset.aid)">☐ Tap Done</span>';
     }
     html+='</div></div>';
   });
@@ -3631,10 +3672,12 @@ function getBoilerLog(){
     }
     // Check for incomplete steps and flag
     checkBoilerIncomplete(log);
-    log={date:today,clean:null,start:null,serving:null,stop:null,feeds:[],waterChecks:[],smokeChecks:[]};
+    log={date:today,clean:null,start:null,serving:null,stop:null,feeds:[],waterChecks:[],smokeChecks:[],waterLevelStart:null,waterLevelEnd:null};
     S.set('boiler_log',log);
   }
   if(!log.waterChecks)log.waterChecks=[];
+  if(log.waterLevelStart===undefined)log.waterLevelStart=null;
+  if(log.waterLevelEnd===undefined)log.waterLevelEnd=null;
   if(!log.smokeChecks)log.smokeChecks=[];
   if(!log.feeds)log.feeds=[];
   return log;
@@ -3677,6 +3720,37 @@ function saveBoilerSettings(){
   });
   toast('🔥 Boiler settings saved');
   renderBoilerPanel();
+}
+
+var _wlvlWhich=null;
+function openWaterLevelModal(which){
+  _wlvlWhich=which;
+  var label=which==='start'?'Morning':'Evening';
+  var titleEl=document.getElementById('wlvl-title');
+  if(titleEl)titleEl.textContent='💧 '+label+' Water Level';
+  var grid=document.getElementById('wlvl-grid');
+  if(grid){
+    var html='';
+    for(var i=1;i<=10;i++){
+      html+='<button data-v="'+i+'" onclick="submitWaterLevel(this.dataset.v)" style="padding:16px 0;background:#eff6ff;border:2px solid #2563eb;border-radius:10px;font-size:19px;font-weight:800;color:#1d4ed8;cursor:pointer;">'+i+'</button>';
+    }
+    grid.innerHTML=html;
+  }
+  var m=document.getElementById('m-waterlevel');if(m)m.classList.add('on');
+}
+function submitWaterLevel(v){
+  v=parseInt(v);
+  var which=_wlvlWhich;
+  if(!which)return;
+  var log=getBoilerLog();
+  var wn=CU?CU.name||CU.username:'Unknown';
+  var field=which==='start'?'waterLevelStart':'waterLevelEnd';
+  log[field]={value:v,time:new Date().toISOString(),worker:wn};
+  saveBoilerLog(log);
+  closeM('m-waterlevel');
+  toast('💧 '+(which==='start'?'Morning':'Evening')+' water level recorded: '+v+'/10 — '+wn);
+  try{renderBoilerPanel();}catch(e){}
+  try{renderWorkerBoiler();}catch(e){}
 }
 
 function blAction(step){
@@ -3748,9 +3822,11 @@ function renderBoilerPanel(){
   // Chips
   var steps=['clean','start','serving','stop'];
   var doneSteps=steps.filter(function(s){return log[s]&&log[s].time;}).length;
+  var wlvlDone=(log.waterLevelStart?1:0)+(log.waterLevelEnd?1:0);
   var chips=document.getElementById('bl-status-chips');
   if(chips)chips.innerHTML=
     chip(doneSteps+'/4','Steps','var(--ok)')+
+    chip(wlvlDone+'/2','Water Lvl',wlvlDone===2?'var(--ok)':'var(--warn)')+
     chip(feeds.length,'Feeds','#f97316')+
     chip(waterChecks.length,'Water','#2563eb')+
     chip(smokeChecks.length,'Smoke','#374151');
@@ -3779,11 +3855,6 @@ function renderBoilerPanel(){
     {id:'stop',  label:'Stop Boiler',    icon:'⏹️', color:'#6366f1', desc:'End of day shutdown'},
   ];
 
-  // Grid header
-  html+='<div style="display:grid;grid-template-columns:40px 1fr 120px 120px 110px;background:#334155;color:#94a3b8;font-size:10px;font-weight:700;padding:6px 12px;gap:8px;">';
-  html+='<div>#</div><div>Step</div><div style="text-align:center;">Time</div><div style="text-align:center;">Worker</div><div style="text-align:center;">Action</div>';
-  html+='</div>';
-
   stepDefs.forEach(function(step,idx2){
     var entry=log[step.id];
     var done=!!(entry&&entry.time);
@@ -3791,29 +3862,42 @@ function renderBoilerPanel(){
     var locked=!done&&!isNext;
     var bg=done?'#f0fdf4':step.alert?'#fef2f2':isNext?'#fefce8':'#f8fafc';
 
-    html+='<div style="display:grid;grid-template-columns:40px 1fr 120px 120px 110px;padding:10px 12px;gap:8px;align-items:center;background:'+bg+';border-bottom:1px solid #e2e8f0;">';
-
-    // Step number circle
-    html+='<div style="width:28px;height:28px;border-radius:50%;background:'+(done?'#16a34a':locked?'#e2e8f0':step.color)+';color:'+(locked?'#94a3b8':'#fff')+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">'+(done?'✓':(idx2+1))+'</div>';
-
-    // Label + desc
-    html+='<div><div style="font-size:13px;font-weight:700;color:'+(locked?'#94a3b8':'inherit')+';">'+step.icon+' '+step.label+'</div>';
-    html+='<div style="font-size:10px;color:'+(step.alert?'#dc2626':'var(--muted)')+';">'+(step.alert?'⚠ '+startMinLate+' min late — start now!':step.desc)+'</div></div>';
-
-    // Time
-    html+='<div style="text-align:center;font-family:var(--mono);font-size:11px;color:'+(done?'#16a34a':'#94a3b8')+'">'+(done?fmtT(entry.time):'—')+'</div>';
-
-    // Worker
-    html+='<div style="text-align:center;font-size:11px;color:#6366f1;font-weight:600;">'+(done&&entry.worker?entry.worker:'—')+'</div>';
-
-    // Action
-    html+='<div style="text-align:center;">';
+    html+='<div class="mrow" style="background:'+bg+';">';
+    html+='<div style="width:28px;height:28px;flex:0 0 auto;border-radius:50%;background:'+(done?'#16a34a':locked?'#e2e8f0':step.color)+';color:'+(locked?'#94a3b8':'#fff')+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">'+(done?'✓':(idx2+1))+'</div>';
+    html+='<div class="mrow-main">';
+    html+='<div class="mrow-title" style="color:'+(locked?'#94a3b8':'inherit')+';">'+step.icon+' '+step.label+'</div>';
+    html+='<div class="mrow-sub" style="color:'+(step.alert?'#dc2626':'inherit')+';">'+(step.alert?'⚠ '+startMinLate+' min late — start now!':step.desc)
+      +(done?' &nbsp;·&nbsp; <b style="color:#16a34a;">'+fmtT(entry.time)+'</b> by <b style="color:#6366f1;">'+(entry.worker||'—')+'</b>':'')+'</div>';
+    html+='</div>';
+    html+='<div class="mrow-action">';
     if(done){
-      html+='<span style="background:#dcfce7;color:#16a34a;padding:4px 8px;border-radius:20px;font-size:10px;font-weight:700;">✓ DONE</span>';
+      html+='<span class="badge" style="display:inline-block;text-align:center;background:#dcfce7;color:#16a34a;padding:6px 10px;border-radius:20px;font-size:11px;font-weight:700;">✓ DONE</span>';
     } else if(!locked){
-      html+='<button data-step="'+step.id+'" onclick="blAction(this.dataset.step)" style="background:'+step.color+';color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;">'+step.icon+' Record</button>';
+      html+='<button data-step="'+step.id+'" onclick="blAction(this.dataset.step)" style="background:'+step.color+';color:#fff;border:none;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;">'+step.icon+' Record</button>';
     } else {
-      html+='<span style="color:#cbd5e1;font-size:10px;">Locked</span>';
+      html+='<span class="badge" style="display:inline-block;text-align:center;color:#cbd5e1;font-size:11px;">Locked</span>';
+    }
+    html+='</div></div>';
+  });
+  html+='</div>';
+
+  // ── DAILY WATER LEVEL READINGS ───────────────────────────────────────────
+  html+='<div style="background:var(--white);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;margin-bottom:12px;">';
+  html+='<div style="background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">💧 Water Level Readings (1–10)</div>';
+  [['start','Morning Reading'],['end','Evening Reading']].forEach(function(pair){
+    var which=pair[0],label=pair[1];
+    var entry=log['waterLevel'+(which==='start'?'Start':'End')];
+    var done=!!entry;
+    html+='<div class="mrow" style="background:'+(done?'#eff6ff':'#fff')+';">';
+    html+='<div class="mrow-main">';
+    html+='<div class="mrow-title">💧 '+label+'</div>';
+    html+='<div class="mrow-sub">'+(done?'Level <b style="color:#1d4ed8;">'+entry.value+'/10</b> &nbsp;·&nbsp; '+fmtT(entry.time)+' by <b style="color:#6366f1;">'+(entry.worker||'—')+'</b>':'Not recorded yet')+'</div>';
+    html+='</div>';
+    html+='<div class="mrow-action">';
+    if(done){
+      html+='<button data-w="'+which+'" onclick="openWaterLevelModal(this.dataset.w)" style="background:#e0e7ff;color:#4338ca;border:none;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;">↺ Re-enter</button>';
+    } else {
+      html+='<button data-w="'+which+'" onclick="openWaterLevelModal(this.dataset.w)" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;">💧 Enter Level</button>';
     }
     html+='</div></div>';
   });
@@ -3823,11 +3907,6 @@ function renderBoilerPanel(){
   if(isServing){
     html+='<div style="background:var(--white);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;margin-bottom:12px;">';
     html+='<div style="background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">📊 Monitoring — While Serving</div>';
-
-    // Grid header
-    html+='<div style="display:grid;grid-template-columns:1fr 80px 90px 90px 90px 110px;background:#334155;color:#94a3b8;font-size:10px;font-weight:700;padding:6px 12px;gap:8px;">';
-    html+='<div>Check</div><div style="text-align:center;">Interval</div><div style="text-align:center;">Count</div><div style="text-align:center;">Last</div><div style="text-align:center;">Next In</div><div style="text-align:center;">Action</div>';
-    html+='</div>';
 
     var monitors=[
       {id:'feed',  label:'🪵 Log Feed',    color:'#f97316', interval:feedInterval,  since:feedSince,  overdue:feedOverdue,  count:feeds.length,        last:feeds.length>0?feeds[feeds.length-1]:null},
@@ -3840,13 +3919,14 @@ function renderBoilerPanel(){
       var bg=m.overdue?'#fef2f2':left!==null&&left<=10?'#fffbeb':'#fff';
       var statusColor=m.overdue?'#dc2626':left!==null&&left<=10?'#d97706':'#16a34a';
 
-      html+='<div style="display:grid;grid-template-columns:1fr 80px 90px 90px 90px 110px;padding:10px 12px;gap:8px;align-items:center;background:'+bg+';border-bottom:1px solid #e2e8f0;">';
-      html+='<div style="font-size:13px;font-weight:700;">'+m.label+'</div>';
-      html+='<div style="text-align:center;font-family:var(--mono);font-size:12px;color:'+m.color+';font-weight:700;">'+m.interval+'m</div>';
-      html+='<div style="text-align:center;font-family:var(--mono);font-size:13px;font-weight:700;">'+m.count+'</div>';
-      html+='<div style="text-align:center;font-size:11px;font-family:var(--mono);">'+(m.last?fmtT(m.last.time):'—')+'</div>';
-      html+='<div style="text-align:center;font-weight:700;font-size:12px;color:'+statusColor+'">'+(m.overdue?'⚠ OVERDUE':left!==null?left+'m':'—')+'</div>';
-      html+='<div style="text-align:center;"><button data-step="'+m.id+'" onclick="blAction(this.dataset.step)" style="background:'+m.color+';color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;">✓ OK</button></div>';
+      html+='<div class="mrow" style="background:'+bg+';">';
+      html+='<div class="mrow-main">';
+      html+='<div class="mrow-title">'+m.label+'</div>';
+      html+='<div class="mrow-sub">Every <b style="color:'+m.color+';">'+m.interval+'m</b> &nbsp;·&nbsp; Count <b>'+m.count+'</b>'
+        +(m.last?' &nbsp;·&nbsp; Last <b>'+fmtT(m.last.time)+'</b>':'')
+        +' &nbsp;·&nbsp; <span style="color:'+statusColor+';font-weight:700;">'+(m.overdue?'⚠ OVERDUE':left!==null?left+'m left':'—')+'</span></div>';
+      html+='</div>';
+      html+='<div class="mrow-action"><button data-step="'+m.id+'" onclick="blAction(this.dataset.step)" style="background:'+m.color+';color:#fff;border:none;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;">✓ OK</button></div>';
       html+='</div>';
     });
     html+='</div>';
@@ -3854,7 +3934,7 @@ function renderBoilerPanel(){
     // Feed log (scrollable)
     html+='<div style="background:var(--white);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;">';
     html+='<div style="background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">📋 Activity Log Today</div>';
-    html+='<div style="max-height:200px;overflow-y:auto;">';
+    html+='<div class="htable-wrap" style="max-height:200px;overflow-y:auto;">';
 
     // Combine all events into one chronological log
     var allEvents=[];
@@ -3886,6 +3966,7 @@ function renderBoilerPanel(){
   if(bHistory.length){
     html+='<div style="background:var(--white);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;margin-top:4px;">';
     html+='<div style="background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">📋 Past 7 Days</div>';
+    html+='<div class="htable-wrap"><div style="min-width:520px;">';
     html+='<div style="display:grid;grid-template-columns:90px repeat(4,50px) 60px 1fr;background:#334155;color:#94a3b8;font-size:10px;font-weight:700;padding:6px 12px;gap:4px;">';
     html+='<div>Date</div><div style="text-align:center;">Clean</div><div style="text-align:center;">Start</div><div style="text-align:center;">Serving</div><div style="text-align:center;">Stop</div><div style="text-align:center;">Feeds</div><div>Status</div>';
     html+='</div>';
@@ -3916,7 +3997,7 @@ function renderBoilerPanel(){
       }
       html+='</div>';
     });
-    html+='</div>';
+    html+='</div></div>';
   }
 
   wrap.innerHTML=html;
@@ -4074,8 +4155,8 @@ function renderOpsPanel(){
   // Opening record
   html+='<div style="background:var(--white);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;margin-bottom:12px;">';
   html+='<div style="background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">🏢 Opening</div>';
-  html+='<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:'+(log.opened?'#f0fdf4':'#fff')+'">';
-  html+='<div style="flex:1;">';
+  html+='<div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:14px 16px;background:'+(log.opened?'#f0fdf4':'#fff')+'">';
+  html+='<div style="flex:1 1 180px;min-width:0;">';
   html+='<div style="font-size:13px;font-weight:700;">Business Opening</div>';
   html+='<div style="font-size:11px;color:var(--muted);">Agreed time: <strong style="font-family:var(--mono);color:#0ea5e9;">'+settings.openTime+'</strong></div>';
   if(log.opened){
@@ -4085,45 +4166,43 @@ function renderOpsPanel(){
   if(log.opened){
     html+='<span style="background:#dcfce7;color:#16a34a;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;">✓ DONE</span>';
   } else {
-    html+='<button data-act="open" onclick="opsAction(this.dataset.act)"" style="background:#0ea5e9;color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;">🏢 Record Opening</button>';
+    html+='<button data-act="open" onclick="opsAction(this.dataset.act)" style="background:#0ea5e9;color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;">🏢 Record Opening</button>';
   }
   html+='</div></div>';
 
   // Closing Checklist
   html+='<div style="background:var(--white);border-radius:var(--r);border:1px solid '+(isPastClose&&!log.closed?'#fca5a5':'var(--border)')+';box-shadow:var(--sh);overflow:hidden;margin-bottom:12px;">';
   html+='<div style="background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">🔒 Closing Checklist</div>';
-  html+='<div style="display:grid;grid-template-columns:1fr 110px 120px 100px;background:#334155;color:#94a3b8;font-size:10px;font-weight:700;padding:6px 12px;gap:8px;">';
-  html+='<div>Item</div><div style="text-align:center;">Agreed Close</div><div style="text-align:center;">Checked At</div><div style="text-align:center;">Action</div>';
-  html+='</div>';
 
-  OPS_CHECKS.forEach(function(c,ri){
+  OPS_CHECKS.forEach(function(c){
     var entry=log.checklist&&log.checklist[c.id];
     var done=!!(entry&&entry.done);
-    var bg=done?'#f0fdf4':ri%2===0?'#fff':'#f8fafc';
-    html+='<div style="display:grid;grid-template-columns:1fr 110px 120px 100px;padding:11px 12px;gap:8px;align-items:center;background:'+bg+';border-bottom:1px solid #e2e8f0;">';
-    html+='<div style="font-size:13px;font-weight:700;">'+c.icon+' '+c.label+'</div>';
-    html+='<div style="text-align:center;font-family:var(--mono);font-size:12px;color:#6366f1;font-weight:600;">'+settings.closeTime+'</div>';
-    html+='<div style="text-align:center;">'+(done?'<span style="font-family:var(--mono);font-size:11px;color:#16a34a;">'+fmtT(entry.time)+'</span>':'<span style="color:#94a3b8;">—</span>')+'</div>';
-    html+='<div style="text-align:center;">';
+    var bg=done?'#f0fdf4':'#fff';
+    html+='<div class="mrow" style="background:'+bg+';">';
+    html+='<div class="mrow-main">';
+    html+='<div class="mrow-title">'+c.icon+' '+c.label+'</div>';
+    html+='<div class="mrow-sub">Agreed close <b style="color:#6366f1;">'+settings.closeTime+'</b>'+(done?' &nbsp;·&nbsp; Checked <b style="color:#16a34a;">'+fmtT(entry.time)+'</b>':'')+'</div>';
+    html+='</div>';
+    html+='<div class="mrow-action">';
     if(done){
-      html+='<span style="background:#dcfce7;color:#16a34a;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">✓</span>';
+      html+='<span class="badge" style="display:inline-block;text-align:center;background:#dcfce7;color:#16a34a;padding:6px 10px;border-radius:20px;font-size:11px;font-weight:700;">✓ Checked</span>';
     } else {
-      html+='<button data-chk="'+c.id+'" onclick="opsAction(this.dataset.chk)" style="background:#6366f1;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">✓ Done</button>';
+      html+='<button data-chk="'+c.id+'" onclick="opsAction(this.dataset.chk)" style="background:#6366f1;color:#fff;border:none;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;">✓ Done</button>';
     }
     html+='</div></div>';
   });
 
   // Close button
   var allChkDone=OPS_CHECKS.every(function(c){return log.checklist&&log.checklist[c.id];});
-  html+='<div style="padding:12px;background:'+(log.closed?'#f0fdf4':isPastClose?'#fef2f2':'#f8fafc')+';border-top:2px solid var(--border);display:flex;align-items:center;gap:12px;">';
+  html+='<div style="padding:12px;background:'+(log.closed?'#f0fdf4':isPastClose?'#fef2f2':'#f8fafc')+';border-top:2px solid var(--border);display:flex;align-items:center;flex-wrap:wrap;gap:10px;">';
   if(log.closed){
-    html+='<div style="flex:1;font-size:13px;font-weight:700;color:#16a34a;">🔒 Closed at '+fmtT(log.closed.time)+' by '+log.closed.worker+(log.closeLate?' <span style="color:#dc2626;">('+log.closeLateMin+' min late)</span>':'')+'</div>';
+    html+='<div style="flex:1 1 180px;font-size:13px;font-weight:700;color:#16a34a;">🔒 Closed at '+fmtT(log.closed.time)+' by '+log.closed.worker+(log.closeLate?' <span style="color:#dc2626;">('+log.closeLateMin+' min late)</span>':'')+'</div>';
     html+='<span style="background:#dcfce7;color:#16a34a;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;">✓ CLOSED</span>';
   } else if(allChkDone){
-    html+='<div style="flex:1;font-size:12px;color:#16a34a;font-weight:600;">✓ All checks done — ready to close</div>';
-    html+='<button data-act="close" onclick="opsAction(this.dataset.act)"" style="background:#dc2626;color:#fff;border:none;border-radius:7px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;">🔒 Record Closing</button>';
+    html+='<div style="flex:1 1 180px;font-size:12px;color:#16a34a;font-weight:600;">✓ All checks done — ready to close</div>';
+    html+='<button data-act="close" onclick="opsAction(this.dataset.act)" style="background:#dc2626;color:#fff;border:none;border-radius:7px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;">🔒 Record Closing</button>';
   } else {
-    html+='<div style="flex:1;font-size:12px;color:var(--muted);">Complete all checklist items before closing</div>';
+    html+='<div style="flex:1 1 180px;font-size:12px;color:var(--muted);">Complete all checklist items before closing</div>';
     html+='<button disabled style="background:#e2e8f0;color:#94a3b8;border:none;border-radius:7px;padding:10px 18px;font-size:13px;font-weight:700;cursor:not-allowed;">🔒 Close</button>';
   }
   html+='</div></div>';
@@ -4133,6 +4212,7 @@ function renderOpsPanel(){
   if(hist.length){
     html+='<div style="background:var(--white);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;">';
     html+='<div style="background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">📋 Past 14 Days</div>';
+    html+='<div class="htable-wrap"><div style="min-width:560px;">';
     html+='<div style="display:grid;grid-template-columns:90px 80px 80px repeat(5,32px) 80px 1fr;background:#334155;color:#94a3b8;font-size:10px;font-weight:700;padding:6px 10px;gap:4px;">';
     html+='<div>Date</div><div>Opened</div><div>Closed</div>';
     OPS_CHECKS.forEach(function(c){html+='<div style="text-align:center;" title="'+c.label+'">'+c.icon+'</div>';});
@@ -4153,7 +4233,7 @@ function renderOpsPanel(){
       html+='<div style="color:#6366f1;font-weight:600;">'+mgr+'</div>';
       html+='</div>';
     });
-    html+='</div>';
+    html+='</div></div>';
   }
 
   wrap.innerHTML=html;
