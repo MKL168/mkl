@@ -3660,7 +3660,15 @@ function getBoilerSettings(){return S.get('boiler_settings')||{startTime:'05:30'
 function getBoilerLog(){
   var today=todayStr();
   var log=S.get('boiler_log')||{};
-  if(log.date&&log.date!==today){
+  if(!log.date){
+    // Legacy/older record with no date stamp on it at all (predates
+    // consistent date-tracking). Its other fields (clean/start/etc.) are
+    // still today's real data, so backfill today's date onto it rather
+    // than discarding it — this is what caused dates to show as
+    // "undefined" in reports even though the entries themselves were fine.
+    log.date=today;
+    S.set('boiler_log',log);
+  } else if(log.date!==today){
     // Archive yesterday's log before resetting
     var history=S.get('boiler_history')||[];
     // Check if already archived for this date
