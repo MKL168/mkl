@@ -980,7 +980,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
   </div>
 </div>
 <div class="mbg" id="m-issue">
-  <div class="modal"><div class="mh"></div><h3>Log Issue</h3>
+  <div class="modal"><div class="mh"><span>⚠ Log Issue</span><button class="mc" onclick="closeM('m-issue')">✕</button></div>
     <div class="ff"><label class="fl">Category</label>
       <div id="iss-cats" style="display:flex;flex-wrap:wrap;gap:7px;"></div>
     </div>
@@ -1453,6 +1453,197 @@ function findLoginUser(uname){
   })[0];
 }
 function getIssues(){return S.get('issues')||[];}
+
+// ═══ ISSUES TRACKER ══════════════════════════════════════════════════════
+const ISSUE_CATS=[
+  {id:'meeting',    icon:'📋',label:'Meeting',    color:'#8b5cf6',subs:['Team Meeting','Client Meeting','Follow-up Needed']},
+  {id:'staff',      icon:'👤',label:'Staff',      color:'#0ea5e9',subs:['Attendance','Performance','Conduct','Training']},
+  {id:'client',     icon:'🤝',label:'Client',     color:'#f59e0b',subs:['Complaint','Special Request','Payment Issue','Feedback']},
+  {id:'ordering',   icon:'📦',label:'Ordering',   color:'#10b981',subs:['Low Stock','Damaged Delivery','Wrong Item','Supplier Issue']},
+  {id:'maintenance',icon:'🔧',label:'Maintenance',color:'#6366f1',subs:['Machine Broken','Building Repair','Vehicle','IT / Computer']},
+  {id:'cleaning',   icon:'🧹',label:'Cleaning',   color:'#06b6d4',subs:['Missed Area','Supplies Needed','Equipment']},
+  {id:'boiler',     icon:'🔥',label:'Boiler',     color:'#ea580c',subs:['Malfunction','Fuel / Gas','Water Issue','Safety Concern']},
+];
+var _issCat=null,_issSub=null;
+
+function openIssModal(){
+  _issCat=null;_issSub=null;
+  var f=['iss-ttl','iss-det','iss-client','iss-asgn'];
+  f.forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  var ttl=document.getElementById('iss-ttl');if(ttl)ttl.dataset.autofill='1';
+  var pri=document.getElementById('iss-pri');if(pri)pri.value='medium';
+  var wrap=document.getElementById('iss-client-wrap');if(wrap)wrap.style.display='none';
+  renderIssCats();
+  renderIssSubs();
+  var m=document.getElementById('m-issue');if(m)m.classList.add('on');
+}
+function renderIssCats(){
+  var el=document.getElementById('iss-cats');if(!el)return;
+  var html='';
+  ISSUE_CATS.forEach(function(c){
+    var on=_issCat===c.id;
+    html+='<button data-c="'+c.id+'" onclick="pickIssCat(this.dataset.c)" style="padding:7px 12px;border-radius:20px;border:1.5px solid '+(on?c.color:'#e2e8f0')+';background:'+(on?c.color:'#fff')+';color:'+(on?'#fff':'#374151')+';font-size:12px;font-weight:700;cursor:pointer;">'+c.icon+' '+c.label+'</button>';
+  });
+  el.innerHTML=html;
+}
+function pickIssCat(cid){
+  _issCat=cid;_issSub=null;
+  renderIssCats();
+  renderIssSubs();
+  var wrap=document.getElementById('iss-client-wrap');
+  if(wrap)wrap.style.display=(cid==='client')?'block':'none';
+}
+function renderIssSubs(){
+  var el=document.getElementById('iss-subs');if(!el)return;
+  var cat=ISSUE_CATS.find(function(c){return c.id===_issCat;});
+  if(!cat){el.innerHTML='<div style="font-size:11px;color:var(--muted);">Pick a category first</div>';return;}
+  var html='<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+  cat.subs.forEach(function(s){
+    var on=_issSub===s;
+    html+='<button data-s="'+s+'" onclick="pickIssSub(this.dataset.s)" style="padding:6px 10px;border-radius:16px;border:1.5px solid '+(on?'#374151':'#e2e8f0')+';background:'+(on?'#374151':'#f8fafc')+';color:'+(on?'#fff':'#475569')+';font-size:11px;font-weight:600;cursor:pointer;">'+s+'</button>';
+  });
+  html+='</div>';
+  el.innerHTML=html;
+}
+function pickIssSub(s){
+  _issSub=s;
+  renderIssSubs();
+  var ttl=document.getElementById('iss-ttl');
+  if(ttl&&ttl.dataset.autofill!=='0')ttl.value=s;
+}
+function saveIssue(){
+  if(!_issCat){toast('Pick a category',true);return;}
+  var ttlEl=document.getElementById('iss-ttl');
+  var ttl=ttlEl?ttlEl.value.trim():'';
+  if(!ttl){toast('Enter a title',true);return;}
+  var issue={
+    id:'iss_'+Date.now().toString(36)+Math.random().toString(36).substring(2,6),
+    category:_issCat,
+    sub:_issSub||'',
+    client:(document.getElementById('iss-client')||{}).value?document.getElementById('iss-client').value.trim():'',
+    title:ttl,
+    details:(document.getElementById('iss-det')||{}).value?document.getElementById('iss-det').value.trim():'',
+    priority:(document.getElementById('iss-pri')||{}).value||'medium',
+    assignedTo:(document.getElementById('iss-asgn')||{}).value?document.getElementById('iss-asgn').value.trim():'',
+    status:'open',
+    createdAt:new Date().toISOString(),
+    createdBy:CU?(CU.name||CU.username):'Unknown',
+  };
+  var issues=getIssues();
+  issues.unshift(issue);
+  S.set('issues',issues);
+  closeM('m-issue');
+  toast('⚠ Issue logged: '+ttl);
+  renderIssues();
+}
+function iTab(tab,btn){
+  issTab=tab;
+  document.querySelectorAll('#st-issues .tb').forEach(function(b){b.classList.remove('on');});
+  if(btn)btn.classList.add('on');
+  renderIssues();
+}
+function issStatusLabel(s){return {open:'🔴 Open',progress:'🟡 In Progress',resolved:'🟢 Resolved'}[s]||s;}
+function renderIssues(){
+  var all=getIssues();
+  var chipsEl=document.getElementById('iss-chips');
+  var openCount=all.filter(function(i){return i.status==='open';}).length;
+  var progCount=all.filter(function(i){return i.status==='progress';}).length;
+  var resCount=all.filter(function(i){return i.status==='resolved';}).length;
+  if(chipsEl)chipsEl.innerHTML=chip(all.length,'Total','')+chip(openCount,'Open','var(--late)')+chip(progCount,'In Progress','var(--warn)')+chip(resCount,'Resolved','var(--ok)');
+
+  var STATUS_MAP={open:'open',prog:'progress',res:'resolved'};
+  var list=all,titleEl=document.getElementById('iss-title');
+  if(issTab==='all'){
+    if(titleEl)titleEl.textContent='All Issues';
+  } else if(STATUS_MAP[issTab]){
+    list=all.filter(function(i){return i.status===STATUS_MAP[issTab];});
+    if(titleEl)titleEl.textContent=issStatusLabel(STATUS_MAP[issTab])+' Issues';
+  } else {
+    var cat=ISSUE_CATS.find(function(c){return c.id===issTab;});
+    list=all.filter(function(i){return i.category===issTab;});
+    if(titleEl)titleEl.textContent=(cat?cat.icon+' '+cat.label:issTab)+' Issues';
+  }
+
+  var el=document.getElementById('iss-list');if(!el)return;
+  if(!list.length){el.innerHTML='<div class="empty-s"><div class="ei">✅</div>No issues here.</div>';return;}
+
+  list=list.slice().sort(function(a,b){
+    var sw={open:0,progress:1,resolved:2};
+    if(a.status!==b.status)return sw[a.status]-sw[b.status];
+    var pw={high:0,medium:1,low:2};
+    return (pw[a.priority]||1)-(pw[b.priority]||1)||new Date(b.createdAt)-new Date(a.createdAt);
+  });
+
+  var html='';
+  list.forEach(function(iss){
+    var cat=ISSUE_CATS.find(function(c){return c.id===iss.category;})||{icon:'📋',label:iss.category,color:'#64748b'};
+    var priColor={high:'#dc2626',medium:'#d97706',low:'#16a34a'}[iss.priority]||'#64748b';
+    var statusBg={open:'#fee2e2',progress:'#fef9c3',resolved:'#dcfce7'}[iss.status];
+    var statusColor={open:'#dc2626',progress:'#a16207',resolved:'#16a34a'}[iss.status];
+
+    html+='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--sh);">';
+    html+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">';
+    html+='<span style="background:'+cat.color+';color:#fff;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;">'+cat.icon+' '+cat.label+'</span>';
+    if(iss.sub)html+='<span style="background:#f1f5f9;color:#475569;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600;">'+iss.sub+'</span>';
+    html+='<span style="background:'+priColor+';color:#fff;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;">'+(iss.priority||'medium').toUpperCase()+'</span>';
+    html+='<span style="background:'+statusBg+';color:'+statusColor+';padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;margin-left:auto;">'+issStatusLabel(iss.status)+'</span>';
+    html+='</div>';
+    html+='<div style="font-size:14px;font-weight:700;margin-bottom:3px;">'+iss.title+'</div>';
+    if(iss.client)html+='<div style="font-size:11px;color:#6366f1;font-weight:600;margin-bottom:3px;">🤝 '+iss.client+'</div>';
+    if(iss.details)html+='<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">'+iss.details+'</div>';
+    html+='<div style="font-size:10px;color:var(--muted);margin-bottom:8px;">Logged by '+iss.createdBy+' · '+fmtT(iss.createdAt)+' '+iss.createdAt.substring(0,10)+(iss.assignedTo?' · Assigned to <b>'+iss.assignedTo+'</b>':'')+'</div>';
+
+    html+='<div style="display:flex;gap:7px;flex-wrap:wrap;">';
+    if(iss.status==='open')html+='<button data-id="'+iss.id+'" onclick="setIssueStatus(this.dataset.id,\'progress\')" style="flex:1;min-width:100px;padding:8px;background:#f59e0b;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">▶ Start Progress</button>';
+    if(iss.status!=='resolved')html+='<button data-id="'+iss.id+'" onclick="setIssueStatus(this.dataset.id,\'resolved\')" style="flex:1;min-width:100px;padding:8px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">✓ Resolve</button>';
+    if(iss.status==='resolved')html+='<button data-id="'+iss.id+'" onclick="setIssueStatus(this.dataset.id,\'open\')" style="flex:1;min-width:100px;padding:8px;background:#e2e8f0;color:#374151;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">↺ Reopen</button>';
+    if(CU&&(CU.role==='owner'||CU.role==='admin'))html+='<button data-id="'+iss.id+'" onclick="deleteIssue(this.dataset.id)" style="padding:8px 12px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">🗑</button>';
+    html+='</div></div>';
+  });
+  el.innerHTML=html;
+}
+function setIssueStatus(id,status){
+  var issues=getIssues();
+  var iss=issues.find(function(i){return i.id===id;});
+  if(!iss)return;
+  iss.status=status;
+  if(status==='resolved'){iss.resolvedAt=new Date().toISOString();iss.resolvedBy=CU?(CU.name||CU.username):'Unknown';}
+  S.set('issues',issues);
+  toast(status==='resolved'?'✓ Issue resolved':status==='progress'?'▶ Marked in progress':'↺ Reopened');
+  renderIssues();
+}
+function deleteIssue(id){
+  if(!confirm('Delete this issue permanently?'))return;
+  var issues=getIssues().filter(function(i){return i.id!==id;});
+  S.set('issues',issues);
+  toast('🗑 Issue deleted');
+  renderIssues();
+}
+
+// ═══ COMPLETED JOBS (Done tab) ═══════════════════════════════════════════
+function renderDone(){
+  var jobs=getJobs();
+  var custs=getCusts();
+  var list=jobs.filter(function(j){return j.completed&&!j.archived;});
+  list.sort(function(a,b){return new Date(b.deliveryActual||b.completedAt||0)-new Date(a.deliveryActual||a.completedAt||0);});
+  list=list.slice(0,50);
+
+  var el=document.getElementById('done-list');if(!el)return;
+  if(!list.length){el.innerHTML='<div class="empty-s"><div class="ei">📭</div>No completed jobs yet.</div>';return;}
+
+  var html='';
+  list.forEach(function(j){
+    var cust=custs.find(function(c){return c.id===j.custId;});
+    var custName=cust?cust.name:(j.custName||'Unknown');
+    var doneAt=j.deliveryActual||j.completedAt;
+    html+='<div class="mrow" style="background:#fff;">';
+    html+='<div class="mrow-main">';
+    html+='<div class="mrow-title">✅ '+custName+'</div>';
+    html+='<div class="mrow-sub">'+(doneAt?fmtT(doneAt)+' · '+doneAt.substring(0,10):j.date||'')+(j.deliveryWorker?' · by <b>'+j.deliveryWorker+'</b>':'')+'</div>';
+    html+='</div></div>';
+  });
+  el.innerHTML=html;
+}
 function getStaff(){return S.get('staff')||{};}
 function getTimes(){return {...DEFT,...(S.get('times')||{})};}
 
@@ -4605,7 +4796,7 @@ function renderPerfPanel(){
   wrap.innerHTML=html;
   var expBtn=document.createElement('button');
   expBtn.style.cssText='background:#6366f1;color:#fff;border:none;border-radius:7px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;margin-top:10px;float:right;';
-  expBtn.textContent='Export CSV — '+monthLabel;
+  expBtn.textContent='⬇ Export Excel — '+monthLabel;
   expBtn.onclick=function(){exportPerfCSV(month);};
   wrap.appendChild(expBtn);
 }
@@ -4748,6 +4939,7 @@ function submitAppeal(month,workerName){
 }
 
 function exportPerfCSV(month){
+  if(typeof XLSX==='undefined'){toast('Excel library not loaded',true);return;}
   var perfMap={};
   var allJobs=getJobs();
   var opsHist=S.get('ops_history')||[];
@@ -4764,22 +4956,39 @@ function exportPerfCSV(month){
     ensureW(mgr);if(perfMap[mgr]){if(h.closeLate)perfMap[mgr].lateClose++;if(h.openLate)perfMap[mgr].lateOpen++;}
   });
 
-  var rows=Object.values(perfMap);
-  var csv='Name,Incomplete Jobs,Late Stages,Late Close,Late Open,Month\n';
-  rows.forEach(function(r){csv+=r.name+','+r.incompleteJobs+','+r.lateJobs+','+r.lateClose+','+r.lateOpen+','+month+'\n';});
-  var blob=new Blob([csv],{type:'text/csv'});
-  var a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='Mekong_Performance_'+month+'.csv';
-  a.click();
-  toast('Performance report exported');
+  var rows=Object.values(perfMap).sort(function(a,b){
+    var totalA=a.incompleteJobs+a.lateJobs+a.lateClose+a.lateOpen;
+    var totalB=b.incompleteJobs+b.lateJobs+b.lateClose+b.lateOpen;
+    return totalB-totalA||a.name.localeCompare(b.name);
+  });
+
+  if(!rows.length){toast('No performance data for this month',true);return;}
+
+  var lbl=new Date(month+'-01T00:00:00').toLocaleString('default',{month:'long',year:'numeric'});
+  var wb=XLSX.utils.book_new();
+
+  var aoa=[['Name','Incomplete Jobs','Late Stages','Late Close','Late Open','Total Flags','Month']];
+  rows.forEach(function(r){
+    var total=r.incompleteJobs+r.lateJobs+r.lateClose+r.lateOpen;
+    aoa.push([r.name,r.incompleteJobs,r.lateJobs,r.lateClose,r.lateOpen,total,lbl]);
+  });
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:20},{wch:16},{wch:14},{wch:12},{wch:12},{wch:12},{wch:18}];
+  XLSX.utils.book_append_sheet(wb,ws,'Performance Summary');
+
+  XLSX.writeFile(wb,'Mekong_Performance_'+month+'.xlsx');
+  toast('⬇ Performance report exported');
 }
 
 
 
 // ═══ LEAVE MANAGEMENT ══════════════════════════════════════════════════════
 
-function getLeaves(){return S.get('leaves')||[];}
+function getLeaves(){
+  var leaves=S.get('leaves')||[];
+  leaves.forEach(function(l){if(!l.approvals)l.approvals=[];});
+  return leaves;
+}
 function saveLeaves(l){S.set('leaves',l);}
 
 function leavedays(lv){
@@ -5093,6 +5302,20 @@ function showLeaveDetail(workerName,month){
         html+='<span style="background:'+(a.action==='approve'?'#dcfce7':'#fee2e2')+';color:'+(a.action==='approve'?'#16a34a':'#dc2626')+';padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;">'+(a.action==='approve'?'✓':'✕')+' '+a.byName+' ('+a.at.substring(0,10)+')</span>';
       });
       html+='</div>';
+    }
+    if((lv.status==='pending'||lv.status==='partial')&&CU&&(CU.role==='admin'||CU.role==='owner')){
+      var alreadyDidIt=lv.approvals.find(function(a){return a.by===CU.id&&a.action==='approve';});
+      if(!alreadyDidIt){
+        html+='<div style="display:flex;gap:7px;margin-top:10px;">';
+        if(CU.role==='owner'){
+          html+='<button data-lid="'+lv.id+'" data-act="approve" onclick="approveLeave(this.dataset.lid,this.dataset.act);showLeaveDetail(\''+workerName.replace(/'/g,"\\'")+'\',\''+month+'\')" style="flex:2;padding:8px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">👑 Approve Now (Owner)</button>';
+        } else {
+          var apCount=lv.approvals.filter(function(a){return a.action==='approve';}).length;
+          html+='<button data-lid="'+lv.id+'" data-act="approve" onclick="approveLeave(this.dataset.lid,this.dataset.act);showLeaveDetail(\''+workerName.replace(/'/g,"\\'")+'\',\''+month+'\')" style="flex:2;padding:8px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✓ Approve ('+apCount+'/2)</button>';
+        }
+        html+='<button data-lid="'+lv.id+'" data-act="reject" onclick="approveLeave(this.dataset.lid,this.dataset.act);showLeaveDetail(\''+workerName.replace(/'/g,"\\'")+'\',\''+month+'\')" style="flex:1;padding:8px;background:#ef4444;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✕ Reject</button>';
+        html+='</div>';
+      }
     }
     html+='</div>';
   });
