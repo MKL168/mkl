@@ -4578,6 +4578,97 @@ function renderOpsPanel(){
 }
 
 // ═══ PERFORMANCE ════════════════════════════════════════════════════════════
+function buildPerfRows(month){
+  var allJobs=getJobs();
+  var opsHist=S.get('ops_history')||[];
+
+  var perfMap={};
+  function ensureW(name){
+    if(!name||name==='Unknown')return;
+    if(!perfMap[name]){
+      perfMap[name]={name:name,pickup:0,sorting:0,spotting:0,washing:0,drying:0,ironing:0,packaging:0,delivery:0,lateClose:0,lateOpen:0,lateCloseMin:0};
+    }
+  }
+
+  allJobs.forEach(function(j){
+    if(!j.date||j.date.substring(0,7)!==month)return;
+    var hist=j.stageHistory||{};
+    var stages=j.stages||[];
+    stages.forEach(function(sid){
+      var h=hist[sid];
+      var isPU=sid==='pickup',isDL=sid==='delivery';
+      if(isPU){
+        if(j.pickupAgreed&&j.pickupActual){
+          if(new Date(j.pickupActual)>new Date(j.pickupAgreed)){
+            var wkr=j.pickupWorker||(h&&h.worker)||'Unknown';
+            ensureW(wkr);if(perfMap[wkr])perfMap[wkr].pickup++;
+          }
+        } else if(!j.pickupActual&&j.completed===false){
+          var wkr2=(h&&h.worker)||j.clockInWorker||'Unknown';
+          ensureW(wkr2);if(perfMap[wkr2])perfMap[wkr2].pickup++;
+        }
+      } else if(isDL){
+        if(j.deliveryAgreed&&j.deliveryActual){
+          if(new Date(j.deliveryActual)>new Date(j.deliveryAgreed)){
+            var wkr=j.deliveryWorker||(h&&h.worker)||'Unknown';
+            ensureW(wkr);if(perfMap[wkr])perfMap[wkr].delivery++;
+          }
+        } else if(!j.deliveryActual&&!j.completed){
+          var wkr2=(h&&h.worker)||'Unknown';
+          ensureW(wkr2);if(perfMap[wkr2])perfMap[wkr2].delivery++;
+        }
+      } else {
+        if(h&&h.worker&&h.elapsed&&j.processTimes&&j.processTimes[sid]&&h.elapsed>j.processTimes[sid]){
+          ensureW(h.worker);if(perfMap[h.worker]&&perfMap[h.worker].hasOwnProperty(sid))perfMap[h.worker][sid]++;
+        } else if(!h&&!j.completed){
+          var wkr=j.clockInWorker||'Unknown';
+          ensureW(wkr);if(perfMap[wkr]&&perfMap[wkr].hasOwnProperty(sid))perfMap[wkr][sid]++;
+        }
+      }
+    });
+  });
+
+  opsHist.filter(function(h){return h.date&&h.date.substring(0,7)===month;}).forEach(function(h){
+    var mgr=h.closed?h.closed.worker:(h.opened?h.opened.worker:'Unknown');
+    ensureW(mgr);
+    if(perfMap[mgr]){
+      if(h.closeLate){perfMap[mgr].lateClose++;perfMap[mgr].lateCloseMin+=h.closeLateMin||0;}
+      if(h.openLate)perfMap[mgr].lateOpen++;
+    }
+  });
+
+  var today=todayStr();
+  if(today.substring(0,7)===month){
+    allJobs.filter(function(j){return j.date===today&&!j.completed;}).forEach(function(j){
+      var wkr=j.clockOutWorker||j.clockInWorker||'Unknown';
+      ensureW(wkr);
+      var sid=j.stage;
+      if(perfMap[wkr]&&perfMap[wkr].hasOwnProperty(sid))perfMap[wkr][sid]++;
+    });
+  }
+
+  // Seed every known staff member, including ones with a perfectly clean
+  // record — otherwise they're silently missing from the report entirely.
+  var workersData=getWorkersData()||[];
+  workersData.forEach(function(w){if(w.name)ensureW(w.name);});
+  var staffMap=getStaff()||{};
+  Object.values(staffMap).forEach(function(name){
+    if(name&&typeof name==='string')ensureW(name);
+  });
+  getUsers().filter(function(u){
+    return u.status==='active'&&(u.role==='worker'||u.role==='supervisor');
+  }).forEach(function(u){
+    var nm=u.name||u.username;
+    ensureW(nm);
+  });
+
+  return Object.values(perfMap).sort(function(a,b){
+    var ta=a.pickup+a.sorting+a.spotting+a.washing+a.drying+a.ironing+a.packaging+a.delivery+a.lateClose+a.lateOpen;
+    var tb=b.pickup+b.sorting+b.spotting+b.washing+b.drying+b.ironing+b.packaging+b.delivery+b.lateClose+b.lateOpen;
+    return tb-ta||a.name.localeCompare(b.name);
+  });
+}
+
 function renderPerfPanel(){
   var el=document.getElementById('perf-month');
   if(el&&!el.options.length){
@@ -4593,114 +4684,10 @@ function renderPerfPanel(){
   var month=el?el.value:'';if(!month)return;
   var wrap=document.getElementById('perf-wrap');if(!wrap)return;
 
-  // ── Collect all jobs for this month ──────────────────────────────────────
-  var allJobs=getJobs();
-  var opsHist=S.get('ops_history')||[];
-  var perfLog=S.get('perf_log')||[];
-
   // Stage labels for columns
   var processStages=STAGES.filter(function(s){return s.id!=='pickup'&&s.id!=='delivery';});
 
-  // Build worker performance map
-  // Structure: {workerName: {pickup:0, sorting:0, spotting:0, washing:0, drying:0, ironing:0, packaging:0, delivery:0, lateClose:0, lateOpen:0}}
-  var perfMap={};
-  function ensureW(name){
-    if(!name||name==='Unknown')return;
-    if(!perfMap[name]){
-      perfMap[name]={name:name,pickup:0,sorting:0,spotting:0,washing:0,drying:0,ironing:0,packaging:0,delivery:0,lateClose:0,lateOpen:0,lateCloseMin:0};
-    }
-  }
-
-  // Process jobs this month
-  allJobs.forEach(function(j){
-    if(!j.date||j.date.substring(0,7)!==month)return;
-    var hist=j.stageHistory||{};
-
-    // Check each stage for overtime/incomplete
-    var stages=j.stages||[];
-    stages.forEach(function(sid){
-      var h=hist[sid];
-      var isPU=sid==='pickup',isDL=sid==='delivery';
-
-      if(isPU){
-        // Pickup late — agreed time vs actual
-        if(j.pickupAgreed&&j.pickupActual){
-          if(new Date(j.pickupActual)>new Date(j.pickupAgreed)){
-            var wkr=j.pickupWorker||(h&&h.worker)||'Unknown';
-            ensureW(wkr);if(perfMap[wkr])perfMap[wkr].pickup++;
-          }
-        } else if(!j.pickupActual&&j.completed===false){
-          // Never picked up
-          var wkr2=(h&&h.worker)||j.clockInWorker||'Unknown';
-          ensureW(wkr2);if(perfMap[wkr2])perfMap[wkr2].pickup++;
-        }
-      } else if(isDL){
-        // Delivery late or not done
-        if(j.deliveryAgreed&&j.deliveryActual){
-          if(new Date(j.deliveryActual)>new Date(j.deliveryAgreed)){
-            var wkr=j.deliveryWorker||(h&&h.worker)||'Unknown';
-            ensureW(wkr);if(perfMap[wkr])perfMap[wkr].delivery++;
-          }
-        } else if(!j.deliveryActual&&!j.completed){
-          var wkr2=(h&&h.worker)||'Unknown';
-          ensureW(wkr2);if(perfMap[wkr2])perfMap[wkr2].delivery++;
-        }
-      } else {
-        // Processing stage — overtime or never completed
-        if(h&&h.worker&&h.elapsed&&j.processTimes&&j.processTimes[sid]&&h.elapsed>j.processTimes[sid]){
-          ensureW(h.worker);if(perfMap[h.worker]&&perfMap[h.worker].hasOwnProperty(sid))perfMap[h.worker][sid]++;
-        } else if(!h&&!j.completed){
-          // Stage never started
-          var wkr=j.clockInWorker||'Unknown';
-          ensureW(wkr);if(perfMap[wkr]&&perfMap[wkr].hasOwnProperty(sid))perfMap[wkr][sid]++;
-        }
-      }
-    });
-  });
-
-  // Operations closing performance
-  opsHist.filter(function(h){return h.date&&h.date.substring(0,7)===month;}).forEach(function(h){
-    var mgr=h.closed?h.closed.worker:(h.opened?h.opened.worker:'Unknown');
-    ensureW(mgr);
-    if(perfMap[mgr]){
-      if(h.closeLate){perfMap[mgr].lateClose++;perfMap[mgr].lateCloseMin+=h.closeLateMin||0;}
-      if(h.openLate)perfMap[mgr].lateOpen++;
-    }
-  });
-
-  // Also check today's incomplete jobs
-  var today=todayStr();
-  if(today.substring(0,7)===month){
-    allJobs.filter(function(j){return j.date===today&&!j.completed;}).forEach(function(j){
-      var wkr=j.clockOutWorker||j.clockInWorker||'Unknown';
-      ensureW(wkr);
-      // Count current stage as incomplete
-      var sid=j.stage;
-      if(perfMap[wkr]&&perfMap[wkr].hasOwnProperty(sid))perfMap[wkr][sid]++;
-    });
-  }
-
-  var rows=Object.values(perfMap);
-  // Add Staff workers from Staff tab
-  var workersData=getWorkersData()||[];
-  workersData.forEach(function(w){if(w.name)ensureW(w.name);});
-  // Also legacy staff map
-  var staffMap=getStaff()||{};
-  Object.values(staffMap).forEach(function(name){
-    if(name&&typeof name==='string')ensureW(name);
-  });
-  // Also add system users who are workers/supervisors (in case they do tasks too)
-  getUsers().filter(function(u){
-    return u.status==='active'&&(u.role==='worker'||u.role==='supervisor');
-  }).forEach(function(u){
-    var nm=u.name||u.username;
-    ensureW(nm);
-  });
-  rows=Object.values(perfMap).sort(function(a,b){
-    var ta=a.pickup+a.sorting+a.spotting+a.washing+a.drying+a.ironing+a.packaging+a.delivery+a.lateClose+a.lateOpen;
-    var tb=b.pickup+b.sorting+b.spotting+b.washing+b.drying+b.ironing+b.packaging+b.delivery+b.lateClose+b.lateOpen;
-    return tb-ta||a.name.localeCompare(b.name);
-  });
+  var rows=buildPerfRows(month);
 
   if(!rows.length){
     wrap.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted);">No data for this period yet.</div>';
@@ -4940,40 +4927,20 @@ function submitAppeal(month,workerName){
 
 function exportPerfCSV(month){
   if(typeof XLSX==='undefined'){toast('Excel library not loaded',true);return;}
-  var perfMap={};
-  var allJobs=getJobs();
-  var opsHist=S.get('ops_history')||[];
 
-  function ensureW(name){if(name&&name!=='Unknown'&&!perfMap[name])perfMap[name]={name:name,incompleteJobs:0,lateJobs:0,lateClose:0,lateOpen:0};}
-
-  allJobs.filter(function(j){return j.date&&j.date.substring(0,7)===month;}).forEach(function(j){
-    var hist=j.stageHistory||{};
-    Object.keys(hist).forEach(function(s){var h=hist[s];if(h&&h.worker){ensureW(h.worker);if(h.elapsed&&j.processTimes&&j.processTimes[s]&&h.elapsed>j.processTimes[s])perfMap[h.worker].lateJobs++;}});
-    if(!j.completed){var w=j.clockOutWorker||j.clockInWorker||'Unknown';ensureW(w);if(perfMap[w])perfMap[w].incompleteJobs++;}
-  });
-  opsHist.filter(function(h){return h.date&&h.date.substring(0,7)===month;}).forEach(function(h){
-    var mgr=h.closed?h.closed.worker:(h.opened?h.opened.worker:'Unknown');
-    ensureW(mgr);if(perfMap[mgr]){if(h.closeLate)perfMap[mgr].lateClose++;if(h.openLate)perfMap[mgr].lateOpen++;}
-  });
-
-  var rows=Object.values(perfMap).sort(function(a,b){
-    var totalA=a.incompleteJobs+a.lateJobs+a.lateClose+a.lateOpen;
-    var totalB=b.incompleteJobs+b.lateJobs+b.lateClose+b.lateOpen;
-    return totalB-totalA||a.name.localeCompare(b.name);
-  });
-
-  if(!rows.length){toast('No performance data for this month',true);return;}
+  var rows=buildPerfRows(month);
+  if(!rows.length){toast('No staff/performance data for this month',true);return;}
 
   var lbl=new Date(month+'-01T00:00:00').toLocaleString('default',{month:'long',year:'numeric'});
   var wb=XLSX.utils.book_new();
 
-  var aoa=[['Name','Incomplete Jobs','Late Stages','Late Close','Late Open','Total Flags','Month']];
+  var aoa=[['Staff Name','Pickup','Sorting','Spotting','Washing','Drying','Ironing','Packaging','Delivery','Late Close','Late Open','Total Flags','Month']];
   rows.forEach(function(r){
-    var total=r.incompleteJobs+r.lateJobs+r.lateClose+r.lateOpen;
-    aoa.push([r.name,r.incompleteJobs,r.lateJobs,r.lateClose,r.lateOpen,total,lbl]);
+    var total=r.pickup+r.sorting+r.spotting+r.washing+r.drying+r.ironing+r.packaging+r.delivery+r.lateClose+r.lateOpen;
+    aoa.push([r.name,r.pickup,r.sorting,r.spotting,r.washing,r.drying,r.ironing,r.packaging,r.delivery,r.lateClose,r.lateOpen,total,lbl]);
   });
   var ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:20},{wch:16},{wch:14},{wch:12},{wch:12},{wch:12},{wch:18}];
+  ws['!cols']=[{wch:20},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:10},{wch:9},{wch:11},{wch:11},{wch:12},{wch:18}];
   XLSX.utils.book_append_sheet(wb,ws,'Performance Summary');
 
   XLSX.writeFile(wb,'Mekong_Performance_'+month+'.xlsx');
