@@ -4034,6 +4034,7 @@ function renderWaterLevelReportHTML(){
     var on=blReportView===v;
     html+='<button onclick="blSetReportView(\''+v+'\')" style="padding:6px 14px;border-radius:20px;border:1.5px solid '+(on?'#2563eb':'#e2e8f0')+';background:'+(on?'#2563eb':'#fff')+';color:'+(on?'#fff':'#374151')+';font-size:12px;font-weight:700;cursor:pointer;">'+(v==='daily'?'📅 Daily':'📆 Monthly')+'</button>';
   });
+  html+='<button onclick="exportWaterLevelExcel()" style="margin-left:auto;padding:6px 14px;border-radius:20px;border:1.5px solid #16a34a;background:#f0fdf4;color:#16a34a;font-size:12px;font-weight:700;cursor:pointer;">⬇ Export to Excel</button>';
   html+='</div>';
 
   if(!days.length){
@@ -4097,6 +4098,59 @@ function renderWaterLevelReportHTML(){
   html+='</div>';
   return html;
 }
+
+function exportWaterLevelExcel(){
+  if(typeof XLSX==='undefined'){toast('Excel library not loaded',true);return;}
+  var days=getAllBoilerDays().slice().reverse();
+  if(!days.length){toast('No water level data to export',true);return;}
+
+  var wb=XLSX.utils.book_new();
+
+  // Sheet 1: every day, oldest first, easy to read chronologically in a meeting
+  var rows=[['Date','Morning Level (1-10)','Morning Recorded By','Morning Time','Evening Level (1-10)','Evening Recorded By','Evening Time']];
+  days.forEach(function(d){
+    var am=d.waterLevelStart,pm=d.waterLevelEnd;
+    rows.push([
+      d.date,
+      am?am.value:'',
+      am?(am.worker||''):'',
+      am?fmtT(am.time):'',
+      pm?pm.value:'',
+      pm?(pm.worker||''):'',
+      pm?fmtT(pm.time):''
+    ]);
+  });
+  var ws1=XLSX.utils.aoa_to_sheet(rows);
+  ws1['!cols']=[{wch:12},{wch:20},{wch:18},{wch:12},{wch:20},{wch:18},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,ws1,'Daily Readings');
+
+  // Sheet 2: monthly averages — useful for the trend discussion in a meeting
+  var byMonth={};
+  days.forEach(function(d){
+    var m=d.date.substring(0,7);
+    if(!byMonth[m])byMonth[m]={amVals:[],pmVals:[],days:0,missing:0};
+    byMonth[m].days++;
+    if(d.waterLevelStart)byMonth[m].amVals.push(d.waterLevelStart.value);
+    if(d.waterLevelEnd)byMonth[m].pmVals.push(d.waterLevelEnd.value);
+    if(!d.waterLevelStart||!d.waterLevelEnd)byMonth[m].missing++;
+  });
+  var months=Object.keys(byMonth).sort();
+  var rows2=[['Month','Avg Morning Level','Avg Evening Level','Days Logged','Days Missing a Reading']];
+  months.forEach(function(m){
+    var b=byMonth[m];
+    var avgAM=b.amVals.length?(b.amVals.reduce(function(a,c){return a+c;},0)/b.amVals.length).toFixed(1):'';
+    var avgPM=b.pmVals.length?(b.pmVals.reduce(function(a,c){return a+c;},0)/b.pmVals.length).toFixed(1):'';
+    var lbl=new Date(m+'-01T00:00:00').toLocaleString('default',{month:'long',year:'numeric'});
+    rows2.push([lbl,avgAM,avgPM,b.days,b.missing]);
+  });
+  var ws2=XLSX.utils.aoa_to_sheet(rows2);
+  ws2['!cols']=[{wch:18},{wch:16},{wch:16},{wch:12},{wch:20}];
+  XLSX.utils.book_append_sheet(wb,ws2,'Monthly Summary');
+
+  XLSX.writeFile(wb,'MKL_Boiler_Water_Level_'+todayStr()+'.xlsx');
+  toast('⬇ Water level report exported');
+}
+
 function getOpsSettings(){return S.get('ops_settings')||{openTime:'07:00',closeTime:'18:00',manager:''};}
 function getOpsLog(){
   var today=todayStr();
