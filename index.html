@@ -2417,32 +2417,36 @@ function exportInventoryExcel(){
 
   var wb=XLSX.utils.book_new();
 
-  // Sheet 1: the wide ledger — Beginning, (Addition N + its date) × maxIn,
-  // (Out N + its date) × maxOut, (Adj N + its date) × maxAdj, Ending.
-  // Date kept in its own column (not merged into the quantity cell) so the
-  // quantity columns stay numeric and usable in Excel formulas/sums.
+  // Sheet 1: the wide ledger — one column per Addition/Out/Adj (same as
+  // before), but each item now takes TWO rows: the quantity row, then a
+  // date row directly underneath it holding the date for each transaction
+  // in the column above it. Keeps the sheet narrower than doubling columns,
+  // since each transaction only ever happens once.
   var header=['Category','Item','Unit','Beginning'];
-  for(var i=1;i<=maxIn;i++){header.push('Addition '+i);header.push('Add '+i+' Date');}
-  for(var i=1;i<=maxOut;i++){header.push('Out '+i);header.push('Out '+i+' Date');}
-  for(var i=1;i<=maxAdj;i++){header.push('Adj '+i);header.push('Adj '+i+' Date');}
+  for(var i=1;i<=maxIn;i++)header.push('Addition '+i);
+  for(var i=1;i<=maxOut;i++)header.push('Out '+i);
+  for(var i=1;i<=maxAdj;i++)header.push('Adj '+i);
   header.push('Reorder Level','Ending Balance','Status');
   var rows=[header];
 
   perItem.forEach(function(p){
     var cat=getInvCats().find(function(c){return c.id===p.item.category;});
-    var row=[(cat?cat.label:p.item.category),p.item.name,p.item.unit,p.periodBeginning];
-    for(var i=0;i<maxIn;i++){row.push(p.ins[i]?p.ins[i].qty:'');row.push(p.ins[i]?p.ins[i].reviewedAt.substring(0,10):'');}
-    for(var i=0;i<maxOut;i++){row.push(p.outs[i]?p.outs[i].qty:'');row.push(p.outs[i]?p.outs[i].reviewedAt.substring(0,10):'');}
-    for(var i=0;i<maxAdj;i++){row.push(p.adjs[i]?p.adjs[i].qty:'');row.push(p.adjs[i]?p.adjs[i].reviewedAt.substring(0,10):'');}
+    var qtyRow=[(cat?cat.label:p.item.category),p.item.name,p.item.unit,p.periodBeginning];
+    var dateRow=['','','',''];
+    for(var i=0;i<maxIn;i++){qtyRow.push(p.ins[i]?p.ins[i].qty:'');dateRow.push(p.ins[i]?p.ins[i].reviewedAt.substring(0,10):'');}
+    for(var i=0;i<maxOut;i++){qtyRow.push(p.outs[i]?p.outs[i].qty:'');dateRow.push(p.outs[i]?p.outs[i].reviewedAt.substring(0,10):'');}
+    for(var i=0;i<maxAdj;i++){qtyRow.push(p.adjs[i]?p.adjs[i].qty:'');dateRow.push(p.adjs[i]?p.adjs[i].reviewedAt.substring(0,10):'');}
     var reorderLevel=p.item.reorderLevel||0;
     var status=reorderLevel>0&&p.periodEnding<=reorderLevel?'REORDER':'OK';
-    row.push(reorderLevel,p.periodEnding,status);
-    rows.push(row);
+    qtyRow.push(reorderLevel,p.periodEnding,status);
+    dateRow.push('','','');
+    rows.push(qtyRow);
+    rows.push(dateRow);
   });
 
   var ws1=XLSX.utils.aoa_to_sheet(rows);
   var colWidths=[{wch:12},{wch:22},{wch:8},{wch:11}];
-  for(var i=0;i<maxIn+maxOut+maxAdj;i++){colWidths.push({wch:9});colWidths.push({wch:11});}
+  for(var i=0;i<maxIn+maxOut+maxAdj;i++)colWidths.push({wch:11});
   colWidths.push({wch:13},{wch:13},{wch:9});
   ws1['!cols']=colWidths;
   XLSX.utils.book_append_sheet(wb,ws1,'Inventory Ledger');
