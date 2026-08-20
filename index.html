@@ -2391,9 +2391,11 @@ function exportInventoryExcel(){
   if(!items.length){toast('No inventory items to export',true);return;}
   var allTx=getInvTx().filter(function(t){return t.status==='approved';});
 
-  // First pass: compute each item's period figures (beginning balance,
-  // every approved addition/out/adjustment within the selected month).
+  // First pass: compute each item's period figures, and find the widest
+  // number of additions/outs/adjustments any single item had this month —
+  // that sets how many numbered "Addition N" / "Out N" / "Adj N" pairs we need.
   var perItem=[];
+  var maxIn=0,maxOut=0,maxAdj=0;
   items.slice().sort(function(a,b){return a.name.localeCompare(b.name);}).forEach(function(item){
     var itemTx=allTx.filter(function(t){return t.itemId===item.id;});
     var beforeMonth=itemTx.filter(function(t){return t.reviewedAt&&t.reviewedAt.substring(0,7)<month;});
@@ -2403,6 +2405,9 @@ function exportInventoryExcel(){
     var ins=inMonth.filter(function(t){return t.type==='in';});
     var outs=inMonth.filter(function(t){return t.type==='out';});
     var adjs=inMonth.filter(function(t){return t.type==='adjustment';});
+    maxIn=Math.max(maxIn,ins.length);
+    maxOut=Math.max(maxOut,outs.length);
+    maxAdj=Math.max(maxAdj,adjs.length);
     var totalIn=ins.reduce(function(a,t){return a+t.qty;},0);
     var totalOut=outs.reduce(function(a,t){return a+t.qty;},0);
     var totalAdj=adjs.reduce(function(a,t){return a+t.qty;},0);
@@ -2412,36 +2417,34 @@ function exportInventoryExcel(){
 
   var wb=XLSX.utils.book_new();
 
-  // Sheet 1: the ledger — one Addition column, one Out column, one Adj
-  // column, each with the transaction date sitting directly below it in
-  // the row underneath. If an item had more than one of the same type in
-  // the period (uncommon), the extra amounts are added into the same total
-  // and their dates listed together, rather than adding more columns.
-  var header=['Category','Item','Unit','Beginning','Addition','Out','Adj','Reorder Level','Ending Balance','Status'];
+  // Sheet 1: the wide ledger — Beginning, then (Addition N + its date) for
+  // every addition, (Out N + its date) for every out, (Adj N + its date)
+  // for every adjustment, then Ending. Date sits right next to its own
+  // quantity so each transaction reads as one pair, no separate date row.
+  var header=['Category','Item','Unit','Beginning'];
+  for(var i=1;i<=maxIn;i++){header.push('Addition '+i);header.push('Add '+i+' Date');}
+  for(var i=1;i<=maxOut;i++){header.push('Out '+i);header.push('Out '+i+' Date');}
+  for(var i=1;i<=maxAdj;i++){header.push('Adj '+i);header.push('Adj '+i+' Date');}
+  header.push('Reorder Level','Ending Balance','Status');
   var rows=[header];
 
   perItem.forEach(function(p){
     var cat=getInvCats().find(function(c){return c.id===p.item.category;});
-    var totalIn=p.ins.reduce(function(a,t){return a+t.qty;},0);
-    var totalOut=p.outs.reduce(function(a,t){return a+t.qty;},0);
-    var totalAdj=p.adjs.reduce(function(a,t){return a+t.qty;},0);
+    var row=[(cat?cat.label:p.item.category),p.item.name,p.item.unit,p.periodBeginning];
+    for(var i=0;i<maxIn;i++){row.push(p.ins[i]?p.ins[i].qty:'');row.push(p.ins[i]?p.ins[i].reviewedAt.substring(0,10):'');}
+    for(var i=0;i<maxOut;i++){row.push(p.outs[i]?p.outs[i].qty:'');row.push(p.outs[i]?p.outs[i].reviewedAt.substring(0,10):'');}
+    for(var i=0;i<maxAdj;i++){row.push(p.adjs[i]?p.adjs[i].qty:'');row.push(p.adjs[i]?p.adjs[i].reviewedAt.substring(0,10):'');}
     var reorderLevel=p.item.reorderLevel||0;
     var status=reorderLevel>0&&p.periodEnding<=reorderLevel?'REORDER':'OK';
-
-    var qtyRow=[(cat?cat.label:p.item.category),p.item.name,p.item.unit,p.periodBeginning,
-      (p.ins.length?totalIn:''),(p.outs.length?totalOut:''),(p.adjs.length?totalAdj:''),
-      reorderLevel,p.periodEnding,status];
-    var dateRow=['','','','',
-      p.ins.map(function(t){return t.reviewedAt.substring(0,10);}).join(', '),
-      p.outs.map(function(t){return t.reviewedAt.substring(0,10);}).join(', '),
-      p.adjs.map(function(t){return t.reviewedAt.substring(0,10);}).join(', '),
-      '','',''];
-    rows.push(qtyRow);
-    rows.push(dateRow);
+    row.push(reorderLevel,p.periodEnding,status);
+    rows.push(row);
   });
 
   var ws1=XLSX.utils.aoa_to_sheet(rows);
-  ws1['!cols']=[{wch:12},{wch:22},{wch:8},{wch:11},{wch:12},{wch:12},{wch:12},{wch:13},{wch:13},{wch:9}];
+  var colWidths=[{wch:12},{wch:22},{wch:8},{wch:11}];
+  for(var i=0;i<maxIn+maxOut+maxAdj;i++){colWidths.push({wch:9});colWidths.push({wch:11});}
+  colWidths.push({wch:13},{wch:13},{wch:9});
+  ws1['!cols']=colWidths;
   XLSX.utils.book_append_sheet(wb,ws1,'Inventory Ledger');
 
   // Sheet 2: full transaction detail (with dates), for backup/reference
