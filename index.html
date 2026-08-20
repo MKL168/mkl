@@ -591,6 +591,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
       <button class="tb" onclick="invTab('control',this)">📊 Control Sheet</button>
       <button class="tb" onclick="invTab('addition',this)">➕ Addition</button>
       <button class="tb" onclick="invTab('request',this)">📤 Request</button>
+      <button class="tb" onclick="invTab('adjustment',this)">📐 Adjustment</button>
       <button class="tb" onclick="invTab('approvals',this)">✅ Approvals</button>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px 0;">
@@ -861,7 +862,8 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
     <div class="mh"><span id="inv-item-title">Add Item</span><button class="mc" onclick="closeM('m-inv-item')">✕</button></div>
     <input type="hidden" id="inv-item-id">
     <div class="ff"><label class="fl">Category</label>
-      <div style="display:flex;gap:7px;" id="inv-item-cat"></div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;" id="inv-item-cat"></div>
+      <div onclick="openInvCatModal()" style="font-size:11px;color:#6366f1;font-weight:600;cursor:pointer;margin-top:6px;">➕ Add a new category…</div>
     </div>
     <div class="ff"><label class="fl">Item Name</label><input class="fi" id="inv-item-name" type="text" placeholder="e.g. Bleach, Detergent, Motor Belt…" maxlength="60"></div>
     <div class="fr">
@@ -870,6 +872,18 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
     </div>
     <div class="ff"><label class="fl">Reorder Level <span style="font-size:10px;color:var(--muted);font-weight:400;">(flag when balance falls to or below this)</span></label><input class="fi" id="inv-item-reorder" type="number" min="0" step="any" placeholder="0"></div>
     <div class="mact"><button class="mbtn-c" onclick="closeM('m-inv-item')">Cancel</button><button class="mbtn-s" onclick="saveInvItem()">Save Item</button></div>
+  </div>
+</div>
+
+<!-- INVENTORY CATEGORY MODAL -->
+<div class="mbg" id="m-inv-cat">
+  <div class="modal" style="max-width:380px;">
+    <div class="mh"><span>➕ Add Category</span><button class="mc" onclick="closeM('m-inv-cat')">✕</button></div>
+    <div class="fr">
+      <div class="ff" style="max-width:90px;"><label class="fl">Icon</label><input class="fi" id="inv-cat-icon" type="text" placeholder="📦" maxlength="4"></div>
+      <div class="ff"><label class="fl">Category Name</label><input class="fi" id="inv-cat-name" type="text" placeholder="e.g. Packaging, Uniforms, Office Supplies" maxlength="30"></div>
+    </div>
+    <div class="mact"><button class="mbtn-c" onclick="closeM('m-inv-cat')">Cancel</button><button class="mbtn-s" onclick="saveInvCat()">Add Category</button></div>
   </div>
 </div>
 
@@ -1251,7 +1265,7 @@ const firebaseConfig={
 // intentionally excluded — those are per-device/local-only by design.
 const SYNC_KEYS=['absences','advances','boiler_history','boiler_log','boiler_settings','boiler_warnings',
   'clean_log','clean_settings','counter','customers','dayoffs','deleted_user_ids','device_requests','done','expenses',
-  'generated_keys','inventory_items','inventory_tx','issues','jobs','last_backup','leaves','login_log','ops_history','ops_log','ops_settings',
+  'generated_keys','inventory_categories','inventory_items','inventory_tx','issues','jobs','last_backup','leaves','login_log','ops_history','ops_log','ops_settings',
   'ot_records','ot_schedules','perf_appeals','perf_log','simple_jobs','staff','times','users','violations','workers_data'];
 let fbDB=null, fbReady=false;
 
@@ -1756,10 +1770,39 @@ function saveInvItems(items){S.set('inventory_items',items);}
 function getInvTx(){return S.get('inventory_tx')||[];}
 function saveInvTx(tx){S.set('inventory_tx',tx);}
 
-const INV_CATS=[
-  {id:'chemical',icon:'🧪',label:'Chemical',color:'#0891b2'},
-  {id:'sparepart',icon:'🔩',label:'Sparepart',color:'#78716c'},
-];
+const INV_CAT_COLORS=['#0891b2','#78716c','#8b5cf6','#f59e0b','#10b981','#6366f1','#ec4899','#ea580c','#0d9488','#84cc16'];
+function getInvCats(){
+  var stored=S.get('inventory_categories');
+  if(stored&&stored.length)return stored;
+  return [
+    {id:'chemical',icon:'🧪',label:'Chemical',color:'#0891b2'},
+    {id:'sparepart',icon:'🔩',label:'Sparepart',color:'#78716c'},
+  ];
+}
+function saveInvCats(cats){S.set('inventory_categories',cats);}
+function openInvCatModal(){
+  document.getElementById('inv-cat-icon').value='';
+  document.getElementById('inv-cat-name').value='';
+  document.getElementById('m-inv-cat').classList.add('on');
+}
+function saveInvCat(){
+  var name=document.getElementById('inv-cat-name').value.trim();
+  if(!name){toast('Enter a category name',true);return;}
+  var icon=document.getElementById('inv-cat-icon').value.trim()||'📦';
+  var cats=getInvCats();
+  var id=name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||('cat_'+Date.now().toString(36));
+  if(cats.find(function(c){return c.id===id;})){toast('That category already exists',true);return;}
+  cats.push({id:id,icon:icon,label:name,color:INV_CAT_COLORS[cats.length%INV_CAT_COLORS.length]});
+  saveInvCats(cats);
+  closeM('m-inv-cat');
+  toast('✓ Category added: '+icon+' '+name);
+  // If the item modal is open behind this one, refresh its category picker
+  // so the new category is selectable immediately.
+  if(document.getElementById('m-inv-item').classList.contains('on')){
+    openInvItemModal(document.getElementById('inv-item-id').value||null);
+  }
+  renderInventory();
+}
 
 // Current balance = beginning balance + approved Stock In − approved Stock Out.
 // Pending requests never affect the balance — only an approval does.
@@ -1788,9 +1831,9 @@ function openInvItemModal(id){
   _invCat=item?item.category:null;
   var catEl=document.getElementById('inv-item-cat');
   var html='';
-  INV_CATS.forEach(function(c){
+  getInvCats().forEach(function(c){
     var on=_invCat===c.id;
-    html+='<button data-c="'+c.id+'" onclick="pickInvCat(this.dataset.c)" style="flex:1;padding:9px;border-radius:8px;border:1.5px solid '+(on?c.color:'#e2e8f0')+';background:'+(on?c.color:'#fff')+';color:'+(on?'#fff':'#374151')+';font-size:12px;font-weight:700;cursor:pointer;">'+c.icon+' '+c.label+'</button>';
+    html+='<button data-c="'+c.id+'" onclick="pickInvCat(this.dataset.c)" style="flex:1 1 100px;padding:9px;border-radius:8px;border:1.5px solid '+(on?c.color:'#e2e8f0')+';background:'+(on?c.color:'#fff')+';color:'+(on?'#fff':'#374151')+';font-size:12px;font-weight:700;cursor:pointer;">'+c.icon+' '+c.label+'</button>';
   });
   catEl.innerHTML=html;
   document.getElementById('m-inv-item').classList.add('on');
@@ -1832,9 +1875,10 @@ function addInvBulkRow(){
   var wrap=document.getElementById('inv-bulk-rows');
   var row=document.createElement('div');
   row.style.cssText='display:grid;grid-template-columns:110px 1.3fr 90px 100px 100px 30px;gap:6px;margin-bottom:6px;align-items:center;';
+  var catOptions=getInvCats().map(function(c){return '<option value="'+c.id+'">'+c.icon+' '+c.label+'</option>';}).join('');
   row.innerHTML=
     '<select id="inv-bulk-cat-'+idx+'" style="padding:6px 6px;border:1.5px solid var(--border);border-radius:6px;font-size:11px;">'
-      +'<option value="chemical">🧪 Chemical</option><option value="sparepart">🔩 Sparepart</option></select>'
+      +catOptions+'</select>'
     +'<input id="inv-bulk-name-'+idx+'" type="text" placeholder="Item name" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;">'
     +'<input id="inv-bulk-unit-'+idx+'" type="text" placeholder="Unit" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;">'
     +'<input id="inv-bulk-begin-'+idx+'" type="number" placeholder="0" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;">'
@@ -1876,6 +1920,30 @@ function deleteInvItem(id){
   toast('🗑 Item deleted');
   renderInventory();
 }
+function loadInvSampleItems(){
+  if(getInvItems().length){toast('Item list is not empty — sample data is only offered for an empty list',true);return;}
+  if(!confirm('Add 8 sample items (chemicals and spareparts) so you can see how the Inventory system works? You can edit or delete any of them afterward.'))return;
+  var samples=[
+    {name:'Bleach',category:'chemical',unit:'Liters',beginningBalance:40,reorderLevel:10},
+    {name:'Laundry Detergent',category:'chemical',unit:'Kg',beginningBalance:60,reorderLevel:15},
+    {name:'Fabric Softener',category:'chemical',unit:'Liters',beginningBalance:25,reorderLevel:8},
+    {name:'Stain Remover',category:'chemical',unit:'Liters',beginningBalance:12,reorderLevel:5},
+    {name:'Washing Machine Belt',category:'sparepart',unit:'Pieces',beginningBalance:6,reorderLevel:2},
+    {name:'Dryer Heating Element',category:'sparepart',unit:'Pieces',beginningBalance:3,reorderLevel:1},
+    {name:'Water Pump',category:'sparepart',unit:'Pieces',beginningBalance:2,reorderLevel:1},
+    {name:'Motor Bearing',category:'sparepart',unit:'Pieces',beginningBalance:8,reorderLevel:3},
+  ];
+  var items=getInvItems();
+  samples.forEach(function(s,idx){
+    items.push({id:'inv_sample_'+Date.now().toString(36)+idx,
+      name:s.name,category:s.category,unit:s.unit,beginningBalance:s.beginningBalance,reorderLevel:s.reorderLevel,
+      createdAt:new Date().toISOString(),createdBy:CU?(CU.name||CU.username):'Unknown'});
+  });
+  saveInvItems(items);
+  toast('🧪 8 sample items added — try the Addition, Request, and Adjustment tabs');
+  renderInventory();
+}
+
 function toggleInvItemHidden(id){
   if(!CU||(CU.role!=='owner'&&CU.role!=='admin')){toast('Admin access required',true);return;}
   var items=getInvItems();
@@ -1975,6 +2043,52 @@ function submitInvAdjustment(){
   saveInvTx(tx);
   closeM('m-inv-adjust');
   toast('📐 Adjustment request submitted ('+(variance>0?'+':'')+variance+' '+item.unit+') — awaiting approval');
+  renderInventory();
+}
+
+// Shows the live variance as the Owner types a physical count, in the bulk
+// Adjustment table (separate from the single-item modal above).
+function invUpdateVarianceDisplay(itemId){
+  var countEl=document.getElementById('inv-adj-row-count-'+itemId);
+  var varEl=document.getElementById('inv-adj-row-var-'+itemId);
+  if(!countEl||!varEl)return;
+  var bal=parseFloat(countEl.dataset.bal)||0;
+  var count=countEl.value===''?null:parseFloat(countEl.value);
+  if(count===null||isNaN(count)){varEl.textContent='—';varEl.style.color='var(--muted)';return;}
+  var variance=count-bal;
+  varEl.textContent=(variance>0?'+':'')+variance;
+  varEl.style.color=variance===0?'var(--muted)':variance>0?'#16a34a':'#dc2626';
+}
+
+// Submits an adjustment request for every row in the bulk Adjustment table
+// where a physical count was entered and it differs from the system balance.
+function invSubmitAllAdjustments(){
+  var items=getInvItems();
+  var tx=getInvTx();
+  var count=0;
+  items.forEach(function(item,idx){
+    var countEl=document.getElementById('inv-adj-row-count-'+item.id);
+    if(!countEl||countEl.value==='')return;
+    var physicalCount=parseFloat(countEl.value);
+    if(isNaN(physicalCount)||physicalCount<0)return;
+    var sysBal=parseFloat(countEl.dataset.bal)||0;
+    var variance=physicalCount-sysBal;
+    if(variance===0)return; // matches — nothing to adjust
+    var noteEl=document.getElementById('inv-adj-row-note-'+item.id);
+    var noteText=(noteEl&&noteEl.value.trim()||'Physical count adjustment')+' (System: '+sysBal+', Counted: '+physicalCount+')';
+    tx.unshift({
+      id:'invtx_'+Date.now().toString(36)+Math.random().toString(36).substring(2,6)+idx,
+      itemId:item.id,type:'adjustment',qty:variance,
+      note:noteText,
+      requestedBy:CU?(CU.name||CU.username):'Unknown',
+      requestedAt:new Date().toISOString(),
+      status:'pending',
+    });
+    count++;
+  });
+  if(!count){toast('No differing counts entered',true);return;}
+  saveInvTx(tx);
+  toast('📐 '+count+' adjustment'+(count!==1?'s':'')+' submitted — awaiting approval');
   renderInventory();
 }
 
@@ -2118,7 +2232,8 @@ function renderInventory(){
       +(isAdmin?'<button onclick="openInvBulkItemsModal()" style="padding:7px 14px;background:#6366f1;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">➕ Add Multiple Items</button>':'')
       +'</div>';
     if(!list.length){
-      el.innerHTML=headerHtml+'<div class="empty-s"><div class="ei">📦</div>No items'+(showHidden?'':' to show')+'.'+(isAdmin?' Tap + to add one.':'')+'</div>';
+      el.innerHTML=headerHtml+'<div class="empty-s"><div class="ei">📦</div>No items'+(showHidden?'':' to show')+'.'+(isAdmin?' Tap + to add one, or try some sample data below to see how everything works.':'')+'</div>'
+        +(isAdmin&&!allItems.length?'<div style="text-align:center;"><button onclick="loadInvSampleItems()" style="padding:9px 18px;background:#f1f5f9;color:#374151;border:1.5px dashed #cbd5e1;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">🧪 Load Sample Items (for testing — safe to delete anytime)</button></div>':'');
       return;
     }
     var html='<div class="htable-wrap"><div style="min-width:760px;">';
@@ -2126,7 +2241,7 @@ function renderInventory(){
     html+='<div>Category</div><div>Item</div><div>Unit</div><div style="text-align:right;">Beginning</div><div style="text-align:right;">Reorder Lvl</div><div style="text-align:right;">Balance</div><div>Status</div><div>Actions</div>';
     html+='</div>';
     list.forEach(function(item,ri){
-      var cat=INV_CATS.find(function(c){return c.id===item.category;})||{icon:'📦',label:item.category,color:'#64748b'};
+      var cat=getInvCats().find(function(c){return c.id===item.category;})||{icon:'📦',label:item.category,color:'#64748b'};
       var bal=invBalance(item.id);
       var reorderLevel=item.reorderLevel||0;
       var needsReorder=reorderLevel>0&&bal<=reorderLevel;
@@ -2165,7 +2280,7 @@ function renderInventory(){
     html2+='<div>Category</div><div>Item</div><div style="text-align:right;">Beginning</div><div style="text-align:right;">In</div><div style="text-align:right;">Out</div><div style="text-align:right;">Ending</div><div>Status</div><div>Count</div>';
     html2+='</div>';
     items.slice().sort(function(a,b){return a.name.localeCompare(b.name);}).forEach(function(item,ri){
-      var cat=INV_CATS.find(function(c){return c.id===item.category;})||{icon:'📦',label:item.category};
+      var cat=getInvCats().find(function(c){return c.id===item.category;})||{icon:'📦',label:item.category};
       var itemTx=approvedTx.filter(function(t){return t.itemId===item.id;});
       var beforeMonth=itemTx.filter(function(t){return t.reviewedAt&&t.reviewedAt.substring(0,7)<month;});
       var periodBeginning=(item.beginningBalance||0);
@@ -2225,6 +2340,37 @@ function renderInventory(){
     return;
   }
 
+  // ── 4. ADJUSTMENT — bulk physical count entry, linked to Item List ──────
+  if(tab==='adjustment'){
+    if(!items.length){el.innerHTML='<div class="empty-s"><div class="ei">📦</div>Add items to the Item List first.</div>';return;}
+    var html4='<div class="htable-wrap"><div style="min-width:680px;">';
+    html4+='<div style="display:flex;align-items:center;gap:8px;background:#1e293b;color:#fff;font-size:12px;font-weight:700;padding:9px 12px;">';
+    html4+='<div style="flex:1;">📐 Physical Count Adjustment</div>';
+    html4+='<button onclick="invSubmitAllAdjustments()" style="padding:6px 14px;background:#6366f1;color:#fff;border:none;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;">✓ Submit All Entered</button>';
+    html4+='</div>';
+    html4+='<div style="display:grid;grid-template-columns:1.2fr 90px 100px 90px 1fr;background:#334155;color:#94a3b8;font-size:10px;font-weight:700;padding:6px 12px;gap:6px;">';
+    html4+='<div>Item</div><div style="text-align:right;">System Bal.</div><div>Physical Count</div><div style="text-align:right;">Variance</div><div>Note</div>';
+    html4+='</div>';
+    items.slice().sort(function(a,b){return a.name.localeCompare(b.name);}).forEach(function(item,ri){
+      var bal=invBalance(item.id);
+      html4+='<div style="display:grid;grid-template-columns:1.2fr 90px 100px 90px 1fr;padding:7px 12px;gap:6px;align-items:center;background:'+(ri%2===0?'#fff':'#f8fafc')+';border-bottom:1px solid #f1f5f9;">';
+      html4+='<div style="font-size:12px;font-weight:700;">'+item.name+' <span style="font-weight:400;color:var(--muted);">('+item.unit+')</span></div>';
+      html4+='<div style="text-align:right;font-family:var(--mono);font-size:12px;">'+bal+'</div>';
+      html4+='<input id="inv-adj-row-count-'+item.id+'" data-bal="'+bal+'" type="number" min="0" step="any" placeholder="'+bal+'" oninput="invUpdateVarianceDisplay(\''+item.id+'\')" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;">';
+      html4+='<div id="inv-adj-row-var-'+item.id+'" style="text-align:right;font-family:var(--mono);font-size:12px;color:var(--muted);">—</div>';
+      html4+='<input id="inv-adj-row-note-'+item.id+'" type="text" placeholder="Note (optional)" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;">';
+      html4+='</div>';
+    });
+    html4+='</div></div>';
+
+    var adjTx=tx.filter(function(t){return t.type==='adjustment';}).sort(function(a,b){return new Date(b.requestedAt)-new Date(a.requestedAt);});
+    html4+='<div style="font-size:12px;font-weight:700;color:var(--muted);margin:14px 2px 8px;">RECENT ADJUSTMENTS</div>';
+    if(!adjTx.length)html4+='<div class="empty-s"><div class="ei">📭</div>No adjustments recorded yet.</div>';
+    else adjTx.slice(0,30).forEach(function(t){html4+=invTxRow(t,allItems,true);});
+    el.innerHTML=html4;
+    return;
+  }
+
   // ── 5. APPROVALS — every pending Addition/Request/Adjustment in one queue ─
   if(tab==='approvals'){
     var pending=tx.filter(function(t){return t.status==='pending';}).sort(function(a,b){return new Date(a.requestedAt)-new Date(b.requestedAt);});
@@ -2280,7 +2426,7 @@ function exportInventoryExcel(){
   var rows=[header];
 
   perItem.forEach(function(p){
-    var cat=INV_CATS.find(function(c){return c.id===p.item.category;});
+    var cat=getInvCats().find(function(c){return c.id===p.item.category;});
     var row=[(cat?cat.label:p.item.category),p.item.name,p.item.unit,p.periodBeginning];
     for(var i=0;i<maxIn;i++)row.push(p.ins[i]?p.ins[i].qty:'');
     for(var i=0;i<maxOut;i++)row.push(p.outs[i]?p.outs[i].qty:'');
@@ -2301,7 +2447,7 @@ function exportInventoryExcel(){
   // Sheet 2: full transaction detail (with dates), for backup/reference
   var ledgerRows=[['Date','Item','Category','Type','Quantity','Requested By','Approved By','Note']];
   perItem.forEach(function(p){
-    var cat=INV_CATS.find(function(c){return c.id===p.item.category;});
+    var cat=getInvCats().find(function(c){return c.id===p.item.category;});
     p.ins.concat(p.outs).concat(p.adjs).sort(function(a,b){return a.reviewedAt<b.reviewedAt?-1:1;}).forEach(function(t){
       ledgerRows.push([t.reviewedAt.substring(0,10),p.item.name,(cat?cat.label:p.item.category),(t.type==='in'?'Addition':t.type==='out'?'Out':'Adjustment'),t.qty,t.requestedBy,t.reviewedBy||'',t.note||'']);
     });
