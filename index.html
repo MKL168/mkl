@@ -782,6 +782,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 
   <!-- Jobs Panel -->
   <div id="wpan-jobs">
+    <div style="padding:9px 12px 0;" id="w-cust-scope"></div>
     <div class="chips" style="padding:9px 12px 0;" id="w-chips"></div>
     <div style="overflow-x:auto;white-space:nowrap;padding:8px 12px 0;scrollbar-width:none;" id="w-stage-bar"></div>
     <div style="padding-top:9px;" id="w-jobs"></div>
@@ -1045,6 +1046,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
       <div class="ff"><label class="fl">Agreed Delivery</label><input class="fi" id="cm-dl" type="time" value="08:00"></div>
     </div>
     <div class="ff"><label class="fl">Stages Required</label><div class="sc-wrap" id="cm-stages"></div></div>
+    <div class="ff"><label class="fl">Assigned Workers <span style="font-size:10px;color:var(--muted);font-weight:400;">(who normally handles this customer — leave blank for "everyone")</span></label><div id="cm-workers"></div></div>
     <div class="ff" id="cm-times-wrap" style="display:none;">
       <label class="fl">Process Duration Limits (minutes)</label>
       <div style="font-size:10px;color:var(--muted);margin-bottom:7px;">Set how long each process should take for this customer. Alert fires when exceeded.</div>
@@ -1498,7 +1500,7 @@ const BUILT_IN_USERS=[
 ];
 
 // ═══ STATE ════════════════════════════════════════════════════════════════
-let CU=null,CStage=null,wFilter='all',curSupTab='dash',issTab='all',usrTab='pend',supFilter='all',blReportView='daily',blReportMonth='';
+let CU=null,CStage=null,wFilter='all',wCustScope='mine',curSupTab='dash',issTab='all',usrTab='pend',supFilter='all',blReportView='daily',blReportMonth='';
 let issCat='office',issSub='',pickedStage=SID[0];
 let alertedSet=new Set(),audioCtx=null;
 let tT=null,soundInterval=null;
@@ -1768,7 +1770,11 @@ function renderDone(){
 // ═══ INVENTORY CONTROL (Chemicals & Spareparts) ═══════════════════════════
 function getInvItems(){return S.get('inventory_items')||[];}
 function saveInvItems(items){S.set('inventory_items',items);}
-function getInvTx(){return S.get('inventory_tx')||[];}
+function getInvTx(){
+  var tx=S.get('inventory_tx')||[];
+  tx.forEach(function(t){if(!t.approvals)t.approvals=[];});
+  return tx;
+}
 function saveInvTx(tx){S.set('inventory_tx',tx);}
 
 const INV_CAT_COLORS=['#0891b2','#78716c','#8b5cf6','#f59e0b','#10b981','#6366f1','#ec4899','#ea580c','#0d9488','#84cc16'];
@@ -1984,7 +1990,7 @@ function submitInvStockRequest(){
     note:document.getElementById('inv-stock-note').value.trim(),
     requestedBy:CU?(CU.name||CU.username):'Unknown',
     requestedAt:new Date().toISOString(),
-    status:'pending',
+    status:'pending',approvals:[],
   });
   saveInvTx(tx);
   closeM('m-inv-stock');
@@ -1995,20 +2001,61 @@ function approveInvTx(txId,action){
   if(!CU||(CU.role!=='owner'&&CU.role!=='admin')){toast('Admin access required',true);return;}
   var tx=getInvTx();
   var t=tx.find(function(x){return x.id===txId;});
-  if(!t||t.status!=='pending')return;
-  var item=getInvItems().find(function(i){return i.id===t.itemId;});
+  if(!t||(t.status!=='pending'&&t.status!=='partial'))return;
+  if(!t.approvals)t.approvals=[];
+
   if(action==='reject'){
     t.status='rejected';
-  } else {
-    if(t.type==='out'&&item&&t.qty>invBalance(t.itemId)){
-      if(!confirm('Approving this would take the balance negative ('+invBalance(t.itemId)+' available). Approve anyway?'))return;
-    }
-    t.status='approved';
+    t.reviewedBy=CU.name||CU.username;
+    t.reviewedAt=new Date().toISOString();
+    saveInvTx(tx);
+    toast('✕ Request rejected');
+    renderInventory();
+    return;
   }
-  t.reviewedBy=CU.name||CU.username;
-  t.reviewedAt=new Date().toISOString();
+
+  if(t.approvals.find(function(a){return a.by===CU.id&&a.action==='approve';})){
+    toast('You have already approved this',true);return;
+  }
+
+  var item=getInvItems().find(function(i){return i.id===t.itemId;});
+  if(t.type==='out'&&item&&t.qty>invBalance(t.itemId)){
+    if(!confirm('Approving this would take the balance negative ('+invBalance(t.itemId)+' available). Approve anyway?'))return;
+  }
+
+  t.approvals.push({by:CU.id,byName:CU.name||CU.username,role:CU.role,at:new Date().toISOString(),action:'approve'});
+
+  if(CU.role==='owner'){
+    // Owner override — a single Owner approval always finalizes instantly,
+    // for any transaction type, regardless of how many admin approvals
+    // already exist.
+    t.status='approved';
+    t.reviewedBy=CU.name||CU.username;
+    t.reviewedAt=new Date().toISOString();
+    saveInvTx(tx);
+    toast('✅ Approved by Owner');
+    renderInventory();
+    return;
+  }
+
+  // Admin approval path. Addition/Usage finalize once 2 distinct admins
+  // have approved. Adjustments never self-finalize from admins alone —
+  // they always need the Owner's approval too (2 Admins + Owner).
+  var adminApprovals=t.approvals.filter(function(a){return a.action==='approve'&&a.role==='admin';});
+  var enoughAdmins=adminApprovals.length>=2;
+  var canFinalize=enoughAdmins&&t.type!=='adjustment';
+
+  if(canFinalize){
+    t.status='approved';
+    t.reviewedBy=CU.name||CU.username;
+    t.reviewedAt=new Date().toISOString();
+    toast('✅ Fully approved (2/2 admins) — recorded');
+  } else {
+    t.status='partial';
+    var need=t.type==='adjustment'?'2 Admins + Owner':'2 Admins';
+    toast('✓ Your approval recorded ('+adminApprovals.length+'/2 admins'+(t.type==='adjustment'?' — also needs Owner':'')+')');
+  }
   saveInvTx(tx);
-  toast(action==='reject'?'✕ Request rejected':'✅ Request approved');
   renderInventory();
 }
 
@@ -2039,7 +2086,7 @@ function submitInvAdjustment(){
     note:noteText,
     requestedBy:CU?(CU.name||CU.username):'Unknown',
     requestedAt:new Date().toISOString(),
-    status:'pending',
+    status:'pending',approvals:[],
   });
   saveInvTx(tx);
   closeM('m-inv-adjust');
@@ -2083,7 +2130,7 @@ function invSubmitAllAdjustments(){
       note:noteText,
       requestedBy:CU?(CU.name||CU.username):'Unknown',
       requestedAt:new Date().toISOString(),
-      status:'pending',
+      status:'pending',approvals:[],
     });
     count++;
   });
@@ -2109,11 +2156,12 @@ function invItemLabel(item){return item?item.name+' ('+item.unit+')':'(deleted i
 // Renders one transaction history row (used in Addition, Request, Approvals tabs).
 function invTxRow(t,items,showApprovalButtons){
   var item=items.find(function(i){return i.id===t.itemId;})||{name:'(deleted item)',unit:''};
-  var typeLabel={in:'📥 Addition',out:'📤 Out',adjustment:'📐 Adjustment'}[t.type]||t.type;
-  var statusColor={pending:'#d97706',approved:'#16a34a',rejected:'#dc2626'}[t.status];
-  var statusBg={pending:'#fffbeb',approved:'#dcfce7',rejected:'#fee2e2'}[t.status];
-  var statusLabel={pending:'⏳ Pending',approved:'✓ Approved',rejected:'✕ Rejected'}[t.status];
+  var typeLabel={in:'📥 Purchase',out:'📤 Usage',adjustment:'📐 Adjustment'}[t.type]||t.type;
+  var statusColor={pending:'#d97706',partial:'#0891b2',approved:'#16a34a',rejected:'#dc2626'}[t.status];
+  var statusBg={pending:'#fffbeb',partial:'#ecfeff',approved:'#dcfce7',rejected:'#fee2e2'}[t.status];
+  var statusLabel={pending:'⏳ Pending',partial:'◑ Partial',approved:'✓ Approved',rejected:'✕ Rejected'}[t.status];
   var qtyDisplay=t.type==='adjustment'?(t.qty>0?'+'+t.qty:t.qty):t.qty;
+  var needText=t.type==='adjustment'?'Needs 2 Admins + Owner':'Needs 2 Admins (or Owner)';
   var html='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--sh);">';
   html+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">';
   html+='<span style="font-size:11px;color:var(--muted);">'+typeLabel+'</span>';
@@ -2122,9 +2170,21 @@ function invTxRow(t,items,showApprovalButtons){
   html+='<span style="margin-left:auto;font-family:var(--mono);font-weight:800;font-size:14px;color:#1d4ed8;">'+qtyDisplay+' '+item.unit+'</span>';
   html+='</div>';
   if(t.note)html+='<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">📝 '+t.note+'</div>';
-  html+='<div style="font-size:10px;color:var(--muted);margin-bottom:'+(showApprovalButtons&&t.status==='pending'?'10px':'0')+';">Requested by '+t.requestedBy+' · '+fmtT(t.requestedAt)+' '+t.requestedAt.substring(0,10)
-    +(t.reviewedBy?' · Reviewed by <b>'+t.reviewedBy+'</b>':'')+'</div>';
-  if(showApprovalButtons&&t.status==='pending'&&CU&&(CU.role==='owner'||CU.role==='admin')){
+  html+='<div style="font-size:10px;color:var(--muted);margin-bottom:6px;">👤 Requested by <b>'+t.requestedBy+'</b> · '+fmtT(t.requestedAt)+' '+t.requestedAt.substring(0,10)+'</div>';
+  if(t.status==='rejected'&&t.reviewedBy){
+    html+='<div style="margin-bottom:8px;font-size:11px;color:#dc2626;">✕ Rejected by <b>'+t.reviewedBy+'</b>'+(t.reviewedAt?' · '+t.reviewedAt.substring(0,10):'')+'</div>';
+  } else if(t.approvals&&t.approvals.length){
+    html+='<div style="margin-bottom:8px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;">';
+    t.approvals.forEach(function(a){
+      html+='<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;">✓ '+a.byName+(a.role==='owner'?' (Owner)':'')+'</span>';
+    });
+    if(t.status!=='approved')html+='<span style="font-size:10px;color:var(--muted);">— '+needText+'</span>';
+    html+='</div>';
+  } else if(t.status==='pending'){
+    html+='<div style="margin-bottom:8px;font-size:10px;color:var(--muted);">'+needText+'</div>';
+  }
+  var iAlreadyApproved=CU&&t.approvals&&t.approvals.find(function(a){return a.by===CU.id&&a.action==='approve';});
+  if(showApprovalButtons&&(t.status==='pending'||t.status==='partial')&&!iAlreadyApproved&&CU&&(CU.role==='owner'||CU.role==='admin')){
     html+='<div style="display:flex;gap:7px;">';
     html+='<button data-id="'+t.id+'" onclick="approveInvTx(this.dataset.id,\'approve\')" style="flex:2;padding:8px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✓ Approve</button>';
     html+='<button data-id="'+t.id+'" onclick="approveInvTx(this.dataset.id,\'reject\')" style="flex:1;padding:8px;background:#ef4444;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✕ Reject</button>';
@@ -2151,7 +2211,7 @@ function invSubmitFromRow(itemId,type){
     note:noteEl?noteEl.value.trim():'',
     requestedBy:CU?(CU.name||CU.username):'Unknown',
     requestedAt:new Date().toISOString(),
-    status:'pending',
+    status:'pending',approvals:[],
   });
   saveInvTx(tx);
   toast((type==='in'?'📥 Addition':'📤 Request')+' submitted for '+item.name+' — awaiting approval');
@@ -2177,7 +2237,7 @@ function invSubmitAllRows(type){
       note:noteEl?noteEl.value.trim():'',
       requestedBy:CU?(CU.name||CU.username):'Unknown',
       requestedAt:new Date().toISOString(),
-      status:'pending',
+      status:'pending',approvals:[],
     });
     count++;
   });
@@ -2418,20 +2478,24 @@ function exportInventoryExcel(){
 
   var wb=XLSX.utils.book_new();
 
-  // Sheet 1: the wide ledger — Beginning, then (Addition N + its date) for
-  // every addition, (Out N + its date) for every out, (Adj N + its date)
-  // for every adjustment, then Ending. Date sits right next to its own
-  // quantity so each transaction reads as one pair, no separate date row.
-  var header=['Category','Item','Unit','Beginning'];
-  for(var i=1;i<=maxIn;i++){header.push('Addition '+i);header.push('Add '+i+' Date');}
-  for(var i=1;i<=maxOut;i++){header.push('Out '+i);header.push('Out '+i+' Date');}
+  // Sheet 1: the wide ledger — Beginning, Total Purchase, Total Usage
+  // (quick-glance monthly totals), then (Purchase N + its date) for every
+  // addition, (Usage N + its date) for every out, (Adj N + its date) for
+  // every adjustment, then Ending. Date sits right next to its own
+  // quantity so each transaction reads as one pair.
+  var header=['Category','Item','Unit','Beginning','Total Purchase','Total Usage'];
+  for(var i=1;i<=maxIn;i++){header.push('Purchase '+i);header.push('Purchase '+i+' Date');}
+  for(var i=1;i<=maxOut;i++){header.push('Usage '+i);header.push('Usage '+i+' Date');}
   for(var i=1;i<=maxAdj;i++){header.push('Adj '+i);header.push('Adj '+i+' Date');}
   header.push('Reorder Level','Ending Balance','Status');
   var rows=[header];
 
   perItem.forEach(function(p){
     var cat=getInvCats().find(function(c){return c.id===p.item.category;});
-    var row=[(cat?cat.label:p.item.category),p.item.name,p.item.unit,p.periodBeginning];
+    var totalPurchase=p.ins.reduce(function(a,t){return a+t.qty;},0);
+    var totalUsage=p.outs.reduce(function(a,t){return a+t.qty;},0);
+    var row=[(cat?cat.label:p.item.category),p.item.name,p.item.unit,p.periodBeginning,
+      (p.ins.length?totalPurchase:''),(p.outs.length?totalUsage:'')];
     for(var i=0;i<maxIn;i++){row.push(p.ins[i]?p.ins[i].qty:'');row.push(p.ins[i]?p.ins[i].reviewedAt.substring(0,10):'');}
     for(var i=0;i<maxOut;i++){row.push(p.outs[i]?p.outs[i].qty:'');row.push(p.outs[i]?p.outs[i].reviewedAt.substring(0,10):'');}
     for(var i=0;i<maxAdj;i++){row.push(p.adjs[i]?p.adjs[i].qty:'');row.push(p.adjs[i]?p.adjs[i].reviewedAt.substring(0,10):'');}
@@ -2442,22 +2506,25 @@ function exportInventoryExcel(){
   });
 
   var ws1=XLSX.utils.aoa_to_sheet(rows);
-  var colWidths=[{wch:12},{wch:22},{wch:8},{wch:11}];
+  var colWidths=[{wch:12},{wch:22},{wch:8},{wch:11},{wch:13},{wch:12}];
   for(var i=0;i<maxIn+maxOut+maxAdj;i++){colWidths.push({wch:9});colWidths.push({wch:11});}
   colWidths.push({wch:13},{wch:13},{wch:9});
   ws1['!cols']=colWidths;
   XLSX.utils.book_append_sheet(wb,ws1,'Inventory Ledger');
 
   // Sheet 2: full transaction detail (with dates), for backup/reference
-  var ledgerRows=[['Date','Item','Category','Type','Quantity','Requested By','Approved By','Note']];
+  var ledgerRows=[['Date','Item','Category','Type','Quantity','Requested By','Approved By (all)','Note']];
   perItem.forEach(function(p){
     var cat=getInvCats().find(function(c){return c.id===p.item.category;});
     p.ins.concat(p.outs).concat(p.adjs).sort(function(a,b){return a.reviewedAt<b.reviewedAt?-1:1;}).forEach(function(t){
-      ledgerRows.push([t.reviewedAt.substring(0,10),p.item.name,(cat?cat.label:p.item.category),(t.type==='in'?'Addition':t.type==='out'?'Out':'Adjustment'),t.qty,t.requestedBy,t.reviewedBy||'',t.note||'']);
+      var approverNames=(t.approvals&&t.approvals.length)
+        ?t.approvals.map(function(a){return a.byName+(a.role==='owner'?' (Owner)':'');}).join(', ')
+        :(t.reviewedBy||'');
+      ledgerRows.push([t.reviewedAt.substring(0,10),p.item.name,(cat?cat.label:p.item.category),(t.type==='in'?'Purchase':t.type==='out'?'Usage':'Adjustment'),t.qty,t.requestedBy,approverNames,t.note||'']);
     });
   });
   var ws2=XLSX.utils.aoa_to_sheet(ledgerRows);
-  ws2['!cols']=[{wch:12},{wch:22},{wch:12},{wch:11},{wch:10},{wch:16},{wch:16},{wch:34}];
+  ws2['!cols']=[{wch:12},{wch:22},{wch:12},{wch:11},{wch:10},{wch:16},{wch:30},{wch:34}];
   XLSX.utils.book_append_sheet(wb,ws2,'Transaction Detail');
 
   XLSX.writeFile(wb,'MKL_Inventory_'+month+'.xlsx');
@@ -2874,6 +2941,8 @@ function acknowledgeBoilerWarning(){
   try{renderBoilerPanel();}catch(e){}
 }
 function startWorker(){
+  wFilter='all';
+  wCustScope='mine';
   document.getElementById('w-sub').textContent=CU.name;
   showPage('pg-worker');
   renderWorker();
@@ -2905,8 +2974,10 @@ function genDaily(){
   const jobs=getJobs();
   const custs=getCusts();
   if(!custs.length)return;
-  // Only generate jobs for customers who don't already have a job today (inc carried forward)
-  const existingCustIds=new Set(jobs.filter(j=>j.date===today&&!j.express&&!j.archived).map(j=>j.custId));
+  // Only generate jobs for customers who don't already have an open job —
+  // whether that job is dated today or carried over from an earlier day
+  // still in progress (e.g. pickup yesterday, not yet delivered).
+  const existingCustIds=new Set(jobs.filter(j=>!j.express&&!j.archived&&!j.completed&&j.date<=today).map(j=>j.custId));
   const newCusts=custs.filter(c=>!existingCustIds.has(c.id));
   if(!newCusts.length)return;
   let cnt=S.get('counter')||0;
@@ -3531,7 +3602,11 @@ function renderPipe(){
 function renderJobs(){
   var today=todayStr();
   var jobs=getJobs();
-  var list=jobs.filter(function(j){return !j.completed&&!j.archived&&j.date===today;});
+  // Any job that's still open stays visible, whether it started today or an
+  // earlier day (e.g. pickup yesterday, ironing/delivery today) — a job
+  // must never silently disappear from the active list just because the
+  // calendar rolled over while it was still in progress.
+  var list=jobs.filter(function(j){return !j.completed&&!j.archived&&j.date<=today;});
   list.sort(function(a,b){return (a.num||0)-(b.num||0);}); // stable order — OT/Late still shown via labels, but rows no longer jump around after each click
 
   // Update chips
@@ -4012,25 +4087,15 @@ function confirmReset(){
       return Object.assign({},j,{archived:true});
     });
 
-    // 2. Carry forward incomplete jobs - reset their stage progress but keep customer/timing info
+    // 2. Carry forward incomplete jobs — leave their stage, history, and
+    // timing exactly as they are. A job still in progress (e.g. pickup
+    // yesterday, ironing/delivery today) must keep everything it already
+    // recorded — New Day only tags it for the small "FWD" badge, it never
+    // resets or rewinds real progress.
     var carryForward=undone.concat(express).map(function(j){
-      // Reset stage back to beginning, clear clock-in/out but keep job
-      var firstStage=j.stages&&j.stages.length?j.stages[0]:'pickup';
       return Object.assign({},j,{
-        date:today,
-        stage:firstStage,
-        stageClockIn:null,
-        stageClockOut:null,
-        stageHistory:{},
-        pickupActual:null,
-        deliveryActual:null,
-        pickupAgreed:t2iso(getCusts().find(function(c){return c.id===j.custId;})?getCusts().find(function(c){return c.id===j.custId;}).pickupTime:null)||j.pickupAgreed,
-        deliveryAgreed:t2iso(getCusts().find(function(c){return c.id===j.custId;})?getCusts().find(function(c){return c.id===j.custId;}).deliveryTime:null)||j.deliveryAgreed,
-        clockInWorker:null,
-        clockOutWorker:null,
-        completed:false,
         carriedForward:true,
-        originalDate:j.date||today
+        originalDate:j.originalDate||j.date||today
       });
     });
 
@@ -4057,7 +4122,51 @@ function confirmReset(){
 
 function renderWorker(){
   var today=todayStr();
-  var allJobs=getJobs().filter(function(j){return !j.completed&&!j.archived&&j.date===today;});
+  // Same as renderJobs() — a still-open job from an earlier day (e.g.
+  // pickup yesterday, ironing/delivery today) must stay visible, not
+  // disappear just because the date changed.
+  var allJobsRaw=getJobs().filter(function(j){return !j.completed&&!j.archived&&j.date<=today;});
+
+  // Customer scope: by default a worker only sees customers assigned to
+  // them, so their sheet stays to a manageable ~5-10 customers instead of
+  // the whole list. A customer with no assignments at all is visible to
+  // everyone (an unassigned customer isn't hidden from anybody). Since
+  // workers help each other, "All Customers" is one tap away.
+  var custMap={};
+  getCusts().forEach(function(c){custMap[c.id]=c;});
+  function isMine(j){
+    var c=custMap[j.custId];
+    if(!c||!c.assignedWorkers||!c.assignedWorkers.length)return true; // unassigned = visible to all
+    return CU&&c.assignedWorkers.indexOf(CU.id)>-1;
+  }
+  var scopeEl=document.getElementById('w-cust-scope');
+  if(scopeEl&&CU){
+    var mineCount=allJobsRaw.filter(isMine).length;
+    var allCount=allJobsRaw.length;
+    var sHtml='<div style="display:flex;gap:6px;">';
+    sHtml+='<button onclick="wSetCustScope(\'mine\')" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid '+(wCustScope==='mine'?'#6366f1':'#e2e8f0')+';background:'+(wCustScope==='mine'?'#6366f1':'#fff')+';color:'+(wCustScope==='mine'?'#fff':'#374151')+';font-size:12px;font-weight:700;cursor:pointer;">👤 My Customers ('+mineCount+')</button>';
+    sHtml+='<button onclick="wSetCustScope(\'all\')" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid '+(wCustScope==='all'?'#6366f1':'#e2e8f0')+';background:'+(wCustScope==='all'?'#6366f1':'#fff')+';color:'+(wCustScope==='all'?'#fff':'#374151')+';font-size:12px;font-weight:700;cursor:pointer;">👥 All Customers ('+allCount+')</button>';
+    sHtml+='</div>';
+    scopeEl.innerHTML=sHtml;
+  }
+  var allJobsUnfiltered=wCustScope==='mine'?allJobsRaw.filter(isMine):allJobsRaw;
+
+  // Stage filter bar — lets a worker further focus on jobs currently at the
+  // stage they handle right now (e.g. only ironing), within whichever
+  // customer scope is active above.
+  var stageBar=document.getElementById('w-stage-bar');
+  if(stageBar){
+    var stagesPresent=STAGES.filter(function(s){return allJobsUnfiltered.some(function(j){return j.stage===s.id;});});
+    var sbHtml='<button data-wf="all" onclick="wFilterBtn(this)" style="padding:6px 12px;margin-right:6px;border-radius:20px;border:1.5px solid '+(wFilter==='all'?'#6366f1':'#e2e8f0')+';background:'+(wFilter==='all'?'#6366f1':'#fff')+';color:'+(wFilter==='all'?'#fff':'#374151')+';font-size:12px;font-weight:700;cursor:pointer;">All</button>';
+    stagesPresent.forEach(function(s){
+      var on=wFilter===s.id;
+      var cnt=allJobsUnfiltered.filter(function(j){return j.stage===s.id;}).length;
+      sbHtml+='<button data-wf="'+s.id+'" onclick="wFilterBtn(this)" style="padding:6px 12px;margin-right:6px;border-radius:20px;border:1.5px solid '+(on?'#6366f1':'#e2e8f0')+';background:'+(on?'#6366f1':'#fff')+';color:'+(on?'#fff':'#374151')+';font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">'+s.icon+' '+s.label+' ('+cnt+')</button>';
+    });
+    stageBar.innerHTML=sbHtml;
+  }
+
+  var allJobs=wFilter==='all'?allJobsUnfiltered:allJobsUnfiltered.filter(function(j){return j.stage===wFilter;});
   var total=allJobs.length;
   var ot=allJobs.filter(function(j){return isOT(j);}).length;
   var late=allJobs.filter(function(j){return isLate(j);}).length;
@@ -4067,7 +4176,8 @@ function renderWorker(){
 
   var el=document.getElementById('w-jobs');if(!el)return;
   if(!allJobs.length){
-    el.innerHTML='<div class="w-empty"><div class="wi">✅</div><p>No active jobs today</p></div>';
+    var emptyMsg=wFilter!=='all'?'No jobs at this stage right now':wCustScope==='mine'?'No active jobs for your customers right now — tap "All Customers" to see everyone, or ask your supervisor about assignments.':'No active jobs today';
+    el.innerHTML='<div class="w-empty"><div class="wi">✅</div><p>'+emptyMsg+'</p></div>';
     return;
   }
 
@@ -4527,6 +4637,7 @@ function wBlAction(step){
 
 function wSetFilter(stage){wFilter=stage;renderWorker();}
 function wFilterBtn(btn){wSetFilter(btn.dataset.wf);}
+function wSetCustScope(scope){wCustScope=scope;wFilter='all';renderWorker();}
 function toast(msg,err){const el=document.getElementById('toast');el.textContent=msg;el.className='toast on'+(err?' er':'');clearTimeout(tT);tT=setTimeout(()=>el.classList.remove('on'),3000);}
 // Timer managed by enterApp/startWorker
 
@@ -6312,7 +6423,11 @@ function renderWorkerLeave(){
 var EXPENSE_CATS_OPS=['Fuel','Utilities','Maintenance','Supplies','Transport','Salary Advance','Staff Welfare','Other'];
 var EXPENSE_CATS_HQ=['Rent','Insurance','Admin','Marketing','Legal','Equipment','IT','Travel','Other'];
 
-function getAdvances(){return S.get('advances')||[];}
+function getAdvances(){
+  var advances=S.get('advances')||[];
+  advances.forEach(function(a){if(!a.approvals)a.approvals=[];});
+  return advances;
+}
 function saveAdvances(a){S.set('advances',a);}
 function getExpenses(){return S.get('expenses')||[];}
 function saveExpenses(e){S.set('expenses',e);}
@@ -8630,6 +8745,10 @@ function renderCusts(){
     html+='<span>🏁 Delivery: <strong style="color:var(--text);">'+c.deliveryTime+'</strong></span>';
     html+='</div>';
     html+='<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Stages: '+stageList+'</div>';
+    if(c.assignedWorkers&&c.assignedWorkers.length){
+      var workerNames=getUsers().filter(function(u){return c.assignedWorkers.indexOf(u.id)>-1;}).map(function(u){return u.name||u.username;});
+      html+='<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">👤 Assigned: <strong style="color:var(--text);">'+(workerNames.join(', ')||'—')+'</strong></div>';
+    }
     html+='<div style="display:flex;gap:6px;">';
     html+='<button data-cid="'+c.id+'" onclick="editCust(this.dataset.cid)" style="flex:1;padding:5px;background:#f1f5f9;color:#374151;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">✏ Edit</button>';
     html+='<button data-cid="'+c.id+'" onclick="deleteCust(this.dataset.cid)" style="padding:5px 10px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">🗑</button>';
@@ -8648,6 +8767,7 @@ function openCustModal(){
   document.getElementById('cm-pu').value='08:00';
   document.getElementById('cm-dl').value='08:00';
   renderStageToggles('',SID);
+  renderCustWorkerToggles([]);
   document.getElementById('m-cust').classList.add('on');
 }
 
@@ -8661,7 +8781,29 @@ function editCust(id){
   document.getElementById('cm-pu').value=c.pickupTime||'08:00';
   document.getElementById('cm-dl').value=c.deliveryTime||'08:00';
   renderStageToggles(c.id,c.stages||SID);
+  renderCustWorkerToggles(c.assignedWorkers||[]);
   document.getElementById('m-cust').classList.add('on');
+}
+
+// Checkbox list of every active worker, for assigning a customer to whoever
+// normally handles them. Leaving all unchecked means "everyone" — no worker
+// is excluded just because a customer has no assignments configured yet.
+function renderCustWorkerToggles(assignedIds){
+  var wrap=document.getElementById('cm-workers');if(!wrap)return;
+  var workers=getUsers().filter(function(u){return u.status==='active'&&u.role==='worker';});
+  if(!workers.length){
+    wrap.innerHTML='<div style="font-size:11px;color:var(--muted);">No active worker accounts yet.</div>';
+    return;
+  }
+  var html='<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+  workers.forEach(function(w){
+    var on=assignedIds.indexOf(w.id)>-1;
+    html+='<label style="display:flex;align-items:center;gap:5px;cursor:pointer;background:'+(on?'#eef2ff':'#f8fafc')+';border:1px solid '+(on?'#a5b4fc':'#e2e8f0')+';border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;">';
+    html+='<input type="checkbox" id="cwk-'+w.id+'" '+(on?'checked':'')+' style="margin:0;"> '+(w.name||w.username);
+    html+='</label>';
+  });
+  html+='</div>';
+  wrap.innerHTML=html;
 }
 
 function renderStageToggles(custId,selectedStages){
@@ -8689,14 +8831,18 @@ function saveCust(){
     return el&&el.checked;
   }).map(function(s){return s.id;});
   if(!stages.length){toast('Select at least one stage',true);return;}
+  var assignedWorkers=getUsers().filter(function(u){
+    var el=document.getElementById('cwk-'+u.id);
+    return el&&el.checked;
+  }).map(function(u){return u.id;});
   var custs=getCusts();
   var id=document.getElementById('cm-id').value;
   if(id){
     var c=custs.find(function(x){return x.id===id;});
-    if(c){c.name=name;c.type=type;c.pickupTime=pu;c.deliveryTime=dl;c.stages=stages;}
+    if(c){c.name=name;c.type=type;c.pickupTime=pu;c.deliveryTime=dl;c.stages=stages;c.assignedWorkers=assignedWorkers;}
   } else {
     custs.push({id:'c'+Date.now(),name:name,business:name,type:type,
-      pickupTime:pu,deliveryTime:dl,stages:stages,
+      pickupTime:pu,deliveryTime:dl,stages:stages,assignedWorkers:assignedWorkers,
       createdAt:new Date().toISOString()});
   }
   saveCusts(custs);
