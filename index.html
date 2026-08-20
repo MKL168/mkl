@@ -1552,6 +1552,7 @@ function findLoginUser(uname){
   })[0];
 }
 function getIssues(){return S.get('issues')||[];}
+function getStaff(){return S.get('staff')||{};}
 
 // ═══ ISSUES TRACKER ══════════════════════════════════════════════════════
 const ISSUE_CATS=[
@@ -3254,6 +3255,24 @@ function saveUserOverride(uid,patch){
   }
   S.set('users',stored);
   return stored;
+}
+
+function approveUser(uid){
+  if(!CU||(CU.role!=='admin'&&CU.role!=='owner')){toast('No permission',true);return;}
+  var u=getUsers().find(function(x){return x.id===uid;});
+  if(!u){toast('User not found',true);return;}
+  saveUserOverride(uid,{status:'active'});
+  toast('✓ '+(u.name||u.username)+' approved — can now log in');
+  renderUsers();
+}
+function rejectUser(uid){
+  if(!CU||(CU.role!=='admin'&&CU.role!=='owner')){toast('No permission',true);return;}
+  var u=getUsers().find(function(x){return x.id===uid;});
+  if(!u){toast('User not found',true);return;}
+  if(!confirm('Reject '+(u.name||u.username)+"'s account request?"))return;
+  saveUserOverride(uid,{status:'removed'});
+  toast('✕ '+(u.name||u.username)+' rejected');
+  renderUsers();
 }
 
 function suspendUser(uid){
