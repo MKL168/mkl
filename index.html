@@ -886,6 +886,27 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
   </div>
 </div>
 
+<!-- PER-STAFF SCHEDULE MODAL -->
+<div class="mbg" id="m-staff-schedule">
+  <div class="modal" style="max-width:520px;">
+    <div class="mh"><span id="m-staff-sch-title">Custom Hours</span><button class="mc" onclick="closeM('m-staff-schedule')">✕</button></div>
+    <input type="hidden" id="staff-sch-personid">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px;">
+      <div><label class="fl">In 1</label><input type="time" id="staff-sch-in1" class="fi"></div>
+      <div><label class="fl">Out 1</label><input type="time" id="staff-sch-out1" class="fi"></div>
+      <div><label class="fl">In 2</label><input type="time" id="staff-sch-in2" class="fi"></div>
+      <div><label class="fl">Out 2</label><input type="time" id="staff-sch-out2" class="fi"></div>
+      <div><label class="fl">In 3 / OT start</label><input type="time" id="staff-sch-in3" class="fi"></div>
+      <div><label class="fl">Out 3 / OT end</label><input type="time" id="staff-sch-out3" class="fi"></div>
+    </div>
+    <div class="fr">
+      <div class="ff"><label class="fl">First check-in window (min)</label><input type="number" min="0" id="staff-sch-tolFirstMin" class="fi"></div>
+      <div class="ff"><label class="fl">Other tolerance (± min)</label><input type="number" min="0" id="staff-sch-tolOtherMin" class="fi"></div>
+    </div>
+    <div class="mact"><button class="mbtn-c" onclick="closeM('m-staff-schedule')">Cancel</button><button class="mbtn-s" onclick="saveStaffScheduleModal()">💾 Save Custom Hours</button></div>
+  </div>
+</div>
+
 <!-- FACE ENROLLMENT MODAL -->
 <div class="mbg" id="m-face-enroll">
   <div class="modal" style="max-width:440px;">
@@ -912,6 +933,13 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
   </div>
   <div id="face-kiosk-status" style="position:absolute;bottom:0;left:0;right:0;padding:28px 16px;background:linear-gradient(transparent,rgba(0,0,0,.75));text-align:center;color:#fff;font-size:16px;font-weight:700;">
     👀 Looking for a face...
+  </div>
+  <!-- Big full-screen flash shown for a few seconds on every successful scan -->
+  <div id="face-kiosk-bignotif" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:24px;">
+    <div id="face-kiosk-bignotif-icon" style="font-size:120px;line-height:1;margin-bottom:12px;">✓</div>
+    <div id="face-kiosk-bignotif-name" style="font-size:52px;font-weight:900;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6);">Name</div>
+    <div id="face-kiosk-bignotif-action" style="font-size:32px;font-weight:800;margin-top:8px;text-shadow:0 2px 12px rgba(0,0,0,.6);">CHECKED IN</div>
+    <div id="face-kiosk-bignotif-time" style="font-size:20px;color:#fff;opacity:.9;margin-top:6px;text-shadow:0 2px 12px rgba(0,0,0,.6);">8:03 AM</div>
   </div>
 </div>
 
@@ -1306,7 +1334,7 @@ const firebaseConfig={
 // intentionally excluded — those are per-device/local-only by design.
 const SYNC_KEYS=['absences','advances','boiler_history','boiler_log','boiler_settings','boiler_warnings',
   'clean_log','clean_settings','counter','customers','dayoffs','deleted_user_ids','device_requests','done','expenses',
-  'attendance_scans','attendance_schedule','face_enrollments','generated_keys','inventory_categories','inventory_items','inventory_tx','issues','jobs','last_backup','leaves','login_log','ops_history','ops_log','ops_settings',
+  'attendance_scans','attendance_schedule','attendance_schedule_overrides','face_enrollments','generated_keys','inventory_categories','inventory_items','inventory_tx','issues','jobs','last_backup','leaves','login_log','ops_history','ops_log','ops_settings',
   'ot_records','ot_schedules','perf_appeals','perf_log','simple_jobs','staff','times','users','violations','workers_data'];
 let fbDB=null, fbReady=false;
 
@@ -9177,14 +9205,29 @@ function logFaceAttendanceScan(person){
   };
   scans.push(scan);
   saveAttendanceScans(scans);
+
+  // Big, unmistakable full-screen confirmation — visible from across the room.
+  var isIn=type==='in';
+  var bg=document.getElementById('face-kiosk-bignotif');
+  document.getElementById('face-kiosk-bignotif-icon').textContent=isIn?'✓':'👋';
+  document.getElementById('face-kiosk-bignotif-name').textContent=person.name;
+  document.getElementById('face-kiosk-bignotif-action').textContent=isIn?'CHECKED IN':'CHECKED OUT';
+  document.getElementById('face-kiosk-bignotif-action').style.color=isIn?'#4ade80':'#fca5a5';
+  document.getElementById('face-kiosk-bignotif-time').textContent=fmtT(scan.timestamp);
+  bg.style.background=isIn?'rgba(22,163,74,.92)':'rgba(220,38,38,.92)';
+  bg.style.display='flex';
+  if(window._kioskBigNotifTimeout)clearTimeout(window._kioskBigNotifTimeout);
+  window._kioskBigNotifTimeout=setTimeout(function(){bg.style.display='none';},4000);
+
   var statusEl=document.getElementById('face-kiosk-status');
-  statusEl.innerHTML='<div style="font-size:26px;font-weight:900;color:'+(type==='in'?'#4ade80':'#f87171')+';">✓ '+person.name+'</div>'
-    +'<div style="font-size:15px;margin-top:4px;">Clocked '+(type==='in'?'IN':'OUT')+' at '+fmtT(scan.timestamp)+'</div>';
+  statusEl.innerHTML='<div style="font-size:15px;">Last: '+person.name+' — '+(isIn?'IN':'OUT')+' at '+fmtT(scan.timestamp)+'</div>';
 }
 function exitKioskMode(){
   if(!confirm('Exit Kiosk Mode?'))return;
   if(_kioskInterval){clearInterval(_kioskInterval);_kioskInterval=null;}
   if(_kioskStream){_kioskStream.getTracks().forEach(function(t){t.stop();});_kioskStream=null;}
+  if(window._kioskBigNotifTimeout){clearTimeout(window._kioskBigNotifTimeout);window._kioskBigNotifTimeout=null;}
+  document.getElementById('face-kiosk-bignotif').style.display='none';
   document.getElementById('face-kiosk-overlay').style.display='none';
 }
 
@@ -9201,6 +9244,25 @@ function getAttendSchedule(){
 }
 function saveAttendSchedule(sch){S.set('attendance_schedule',sch);}
 
+// Per-staff overrides — only staff with genuinely different hours need an
+// entry here. Anyone without one simply uses the default schedule above.
+function getAttendScheduleOverrides(){return S.get('attendance_schedule_overrides')||{};}
+function saveAttendScheduleOverrides(map){S.set('attendance_schedule_overrides',map);}
+function getAttendScheduleFor(personId){
+  var overrides=getAttendScheduleOverrides();
+  return Object.assign({},getAttendSchedule(),overrides[personId]||{});
+}
+function saveAttendScheduleOverrideFor(personId,sch){
+  var map=getAttendScheduleOverrides();
+  map[personId]=sch;
+  saveAttendScheduleOverrides(map);
+}
+function removeAttendScheduleOverrideFor(personId){
+  var map=getAttendScheduleOverrides();
+  delete map[personId];
+  saveAttendScheduleOverrides(map);
+}
+
 function toMinutes(hhmm){var p=hhmm.split(':');return parseInt(p[0],10)*60+parseInt(p[1],10);}
 
 // Builds the full month's payroll data.
@@ -9209,9 +9271,8 @@ function toMinutes(hhmm){var p=hhmm.split(':');return parseInt(p[0],10)*60+parse
 // complete pairs happen in a day). OT hours are computed per day, per pair,
 // based on when each pair's check-in actually happened — any pair starting
 // at or after the OT boundary counts its full duration as that day's OT.
+// Each staff member's OWN schedule (default or their override) is used.
 function buildPayrollAttendance(month){
-  var schedule=getAttendSchedule();
-  var otBoundaryMin=toMinutes(schedule.in3);
   var scans=getAttendanceScans().filter(function(s){return s.timestamp.substring(0,7)===month;});
   var people=getAttendPeople();
   var parts=month.split('-');
@@ -9219,6 +9280,8 @@ function buildPayrollAttendance(month){
   var exceptions=[];
 
   var rows=people.map(function(p,idx){
+    var schedule=getAttendScheduleFor(p.id);
+    var otBoundaryMin=toMinutes(schedule.in3);
     var regCells=[],otCells=[];
     var totalDays=0,totalOTHours=0;
     for(var d=1;d<=daysInMonth;d++){
@@ -9252,7 +9315,7 @@ function buildPayrollAttendance(month){
       totalOTHours+=dayOTHours;
 
       // Exceptions: judge every actual scan against the nearest expected
-      // slot time using the configured tolerance.
+      // slot time using this staff member's own tolerance settings.
       dayScans.forEach(function(scan,si){
         var d1=new Date(scan.timestamp);
         var actualMin=d1.getHours()*60+d1.getMinutes();
@@ -9296,6 +9359,8 @@ function renderFaceLogTab(){
   html+='</div>';
   html+='<button onclick="saveAttendScheduleFromForm()" style="margin-top:10px;padding:8px 16px;background:#6366f1;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">💾 Save Schedule</button>';
   html+='</div>';
+
+  html+=renderStaffScheduleOverridesCard();
 
   html+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">';
   html+='<div style="font-size:13px;font-weight:800;flex:1;">📊 Payroll Attendance Report</div>';
@@ -9352,6 +9417,65 @@ function saveAttendScheduleFromForm(){
   };
   saveAttendSchedule(sch);
   toast('✓ Shift schedule saved');
+}
+
+// ── Per-staff schedule overrides ─────────────────────────────────────────
+function renderStaffScheduleOverridesCard(){
+  var people=getAttendPeople();
+  var overrides=getAttendScheduleOverrides();
+  var html='<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px;">';
+  html+='<div style="font-size:13px;font-weight:800;margin-bottom:4px;">👤 Per-Staff Hours</div>';
+  html+='<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Only staff with different hours need a custom schedule — everyone else automatically uses the default above.</div>';
+  if(!people.length){
+    html+='<div style="font-size:12px;color:var(--muted);font-style:italic;">Add staff in the Staff tab first.</div>';
+  } else {
+    people.forEach(function(p){
+      var has=!!overrides[p.id];
+      html+='<div class="mrow" style="background:#fff;">';
+      html+='<div class="mrow-main">';
+      html+='<div class="mrow-title">'+p.name+'</div>';
+      html+='<div class="mrow-sub">'+(has?'Custom schedule set':'Using default schedule')+'</div>';
+      html+='</div>';
+      html+='<div class="mrow-action" style="display:flex;gap:6px;">';
+      html+='<button data-id="'+p.id+'" data-name="'+p.name.replace(/"/g,'&quot;')+'" onclick="openStaffScheduleModal(this.dataset.id,this.dataset.name)" style="background:'+(has?'#eef2ff':'#f1f5f9')+';color:'+(has?'#4338ca':'#374151')+';border:none;border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;">'+(has?'✏️ Edit':'➕ Set Custom Hours')+'</button>';
+      if(has)html+='<button data-id="'+p.id+'" data-name="'+p.name.replace(/"/g,'&quot;')+'" onclick="removeStaffScheduleOverride(this.dataset.id,this.dataset.name)" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:700;cursor:pointer;">✕</button>';
+      html+='</div></div>';
+    });
+  }
+  html+='</div>';
+  return html;
+}
+function openStaffScheduleModal(personId,personName){
+  var sch=getAttendScheduleFor(personId);
+  document.getElementById('m-staff-sch-title').textContent='Custom Hours: '+personName;
+  document.getElementById('staff-sch-personid').value=personId;
+  ['in1','out1','in2','out2','in3','out3'].forEach(function(k){document.getElementById('staff-sch-'+k).value=sch[k];});
+  document.getElementById('staff-sch-tolFirstMin').value=sch.tolFirstMin||60;
+  document.getElementById('staff-sch-tolOtherMin').value=sch.tolOtherMin||5;
+  document.getElementById('m-staff-schedule').classList.add('on');
+}
+function saveStaffScheduleModal(){
+  var personId=document.getElementById('staff-sch-personid').value;
+  var sch={
+    in1:document.getElementById('staff-sch-in1').value||'06:00',
+    out1:document.getElementById('staff-sch-out1').value||'12:00',
+    in2:document.getElementById('staff-sch-in2').value||'12:30',
+    out2:document.getElementById('staff-sch-out2').value||'17:00',
+    in3:document.getElementById('staff-sch-in3').value||'17:00',
+    out3:document.getElementById('staff-sch-out3').value||'22:00',
+    tolFirstMin:parseInt(document.getElementById('staff-sch-tolFirstMin').value,10)||60,
+    tolOtherMin:parseInt(document.getElementById('staff-sch-tolOtherMin').value,10)||5,
+  };
+  saveAttendScheduleOverrideFor(personId,sch);
+  closeM('m-staff-schedule');
+  toast('✓ Custom hours saved');
+  renderFaceAttend();
+}
+function removeStaffScheduleOverride(personId,personName){
+  if(!confirm(personName+' will go back to using the default schedule. Continue?'))return;
+  removeAttendScheduleOverrideFor(personId);
+  toast('✓ Reverted to default schedule');
+  renderFaceAttend();
 }
 // Shared sheet layout used by both the real export and the example export —
 // row 1 has merged "Day N" headers spanning 2 columns each, row 2 has the
