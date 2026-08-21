@@ -390,7 +390,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
     <button class="tb" onclick="sTab('leave',this)">🏖 Leave</button>
     <button class="tb" onclick="sTab('finance',this)">💰 Finance</button>
     <button class="tb" onclick="sTab('attend',this)">📅 Attendance</button>
-    <button class="tb" onclick="sTab('faceattend',this)">📷 Face Attendance</button>
+    <button class="tb" id="nav-faceattend" onclick="sTab('faceattend',this)">📷 Face Attendance</button>
     <button class="tb" onclick="sTab('inventory',this)">📦 Inventory</button>
     <button class="tb" onclick="sTab('done',this)">✅ Done</button>
   </div>
@@ -592,6 +592,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
       <button class="tb on" onclick="faceTab('enroll',this)">👤 Enroll Staff</button>
       <button class="tb" onclick="faceTab('kiosk',this)">📷 Kiosk Mode</button>
       <button class="tb" onclick="faceTab('log',this)">📋 Attendance Log</button>
+      <button class="tb" id="nav-kioskdevices" style="display:none;" onclick="faceTab('devices',this)">🔒 Kiosk Devices</button>
     </div>
     <div id="face-body" style="padding-top:12px;"></div>
   </div>
@@ -889,9 +890,22 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 <!-- PER-STAFF SCHEDULE MODAL -->
 <div class="mbg" id="m-staff-schedule">
   <div class="modal" style="max-width:520px;">
-    <div class="mh"><span id="m-staff-sch-title">Custom Hours</span><button class="mc" onclick="closeM('m-staff-schedule')">✕</button></div>
+    <div class="mh"><span id="m-staff-sch-title">Custom Attendance Policy</span><button class="mc" onclick="closeM('m-staff-schedule')">✕</button></div>
     <input type="hidden" id="staff-sch-personid">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px;">
+
+    <div class="ff"><label class="fl">Presence Policy</label>
+      <select id="staff-sch-presencePolicy" class="fi">
+        <option value="checkinout">Check-in AND check-out required for a full day</option>
+        <option value="checkinonly">Check-in alone counts — check-out not required</option>
+      </select>
+      <div style="font-size:10px;color:var(--muted);margin-top:4px;">Use "Check-in alone" for staff who can't reliably scan out (e.g. drivers, off-site work) — a missed check-out is never held against them.</div>
+    </div>
+    <div class="ff" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="staff-sch-otEnabled" style="width:auto;">
+      <label for="staff-sch-otEnabled" style="font-size:12px;font-weight:700;">Track overtime (OT) for this staff member</label>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:12px 0;">
       <div><label class="fl">In 1</label><input type="time" id="staff-sch-in1" class="fi"></div>
       <div><label class="fl">Out 1</label><input type="time" id="staff-sch-out1" class="fi"></div>
       <div><label class="fl">In 2</label><input type="time" id="staff-sch-in2" class="fi"></div>
@@ -903,7 +917,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
       <div class="ff"><label class="fl">First check-in window (min)</label><input type="number" min="0" id="staff-sch-tolFirstMin" class="fi"></div>
       <div class="ff"><label class="fl">Other tolerance (± min)</label><input type="number" min="0" id="staff-sch-tolOtherMin" class="fi"></div>
     </div>
-    <div class="mact"><button class="mbtn-c" onclick="closeM('m-staff-schedule')">Cancel</button><button class="mbtn-s" onclick="saveStaffScheduleModal()">💾 Save Custom Hours</button></div>
+    <div class="mact"><button class="mbtn-c" onclick="closeM('m-staff-schedule')">Cancel</button><button class="mbtn-s" onclick="saveStaffScheduleModal()">💾 Save Policy</button></div>
   </div>
 </div>
 
@@ -1334,7 +1348,7 @@ const firebaseConfig={
 // intentionally excluded — those are per-device/local-only by design.
 const SYNC_KEYS=['absences','advances','boiler_history','boiler_log','boiler_settings','boiler_warnings',
   'clean_log','clean_settings','counter','customers','dayoffs','deleted_user_ids','device_requests','done','expenses',
-  'attendance_scans','attendance_schedule','attendance_schedule_overrides','face_enrollments','generated_keys','inventory_categories','inventory_items','inventory_tx','issues','jobs','last_backup','leaves','login_log','ops_history','ops_log','ops_settings',
+  'attendance_scans','attendance_schedule','attendance_schedule_overrides','face_enrollments','generated_keys','inventory_categories','inventory_items','inventory_tx','issues','jobs','kiosk_approved_devices','kiosk_device_requests','last_backup','leaves','login_log','ops_history','ops_log','ops_settings',
   'ot_records','ot_schedules','perf_appeals','perf_log','simple_jobs','staff','times','users','violations','workers_data'];
 let fbDB=null, fbReady=false;
 
@@ -2945,6 +2959,8 @@ function enterApp(){
     var roleLabels={owner:'Owner',admin:'Admin',supervisor:'Sup',worker:'Sup'};
     rb.textContent=roleLabels[CU.role]||'Sup';
     rb.style.background=RC[CU.role]||RC.supervisor;
+    var faceNav=document.getElementById('nav-faceattend');
+    if(faceNav)faceNav.style.display=(CU.role==='owner'||CU.role==='admin')?'':'none';
     showPage('pg-sup');
     genDaily();
     dedupJobs();
@@ -8360,7 +8376,10 @@ function sTab(tab,btn){
   else if(tab==='custs'){fab.onclick=openCustModal;renderCusts();}
   else if(tab==='issues'){fab.onclick=openIssModal;renderIssues();}
   else if(tab==='inventory'){fab.onclick=function(){openInvItemModal();};renderInventory();}
-  else if(tab==='faceattend'){renderFaceAttend();}
+  else if(tab==='faceattend'){
+    if(!CU||(CU.role!=='owner'&&CU.role!=='admin')){toast('Admin access required',true);sTab('dash',null);return;}
+    renderFaceAttend();
+  }
   else if(tab==='users'){fab.onclick=openUserModal;renderUsers();renderLoginLog();renderBackupStatus();renderLicensePanel();renderDeviceApprovals();renderDeviceManagement();}
   if(tab==='times'){
     renderTimesPanel();renderTimesCleanAreas();renderOpsMgrDropdown();
@@ -9048,10 +9067,120 @@ function faceTab(tab,btn){
   renderFaceAttend();
 }
 function renderFaceAttend(){
+  var devNav=document.getElementById('nav-kioskdevices');
+  if(devNav)devNav.style.display=(CU&&CU.role==='owner')?'':'none';
   var tab=window._faceTab||'enroll';
+  if(tab==='devices'&&(!CU||CU.role!=='owner'))tab='enroll'; // defense in depth
   if(tab==='enroll')renderFaceEnrollTab();
   else if(tab==='kiosk')renderFaceKioskTab();
+  else if(tab==='devices')renderKioskDevicesTab();
   else renderFaceLogTab();
+}
+
+// ── Kiosk device approval — separate from login-device approval. Only the
+// Owner can approve which physical device is allowed to run Kiosk Mode,
+// since it silently logs attendance for everyone who walks up to it. ────────
+function getKioskDeviceRequests(){return S.get('kiosk_device_requests')||[];}
+function saveKioskDeviceRequests(list){S.set('kiosk_device_requests',list);}
+function getApprovedKioskDevices(){return S.get('kiosk_approved_devices')||[];}
+function saveApprovedKioskDevices(list){S.set('kiosk_approved_devices',list);}
+function myFbUid(){return (typeof firebase!=='undefined'&&firebase.auth&&firebase.auth().currentUser)?firebase.auth().currentUser.uid:null;}
+function isThisDeviceApprovedForKiosk(){
+  var uid=myFbUid();
+  if(!uid)return false;
+  return getApprovedKioskDevices().some(function(d){return d.fbUid===uid;});
+}
+function requestKioskDeviceApproval(){
+  var uid=myFbUid();
+  if(!uid){toast('Could not identify this device — check your connection',true);return;}
+  var reqs=getKioskDeviceRequests();
+  var existing=reqs.find(function(r){return r.fbUid===uid&&r.status==='pending';});
+  if(!existing){
+    var label=navigator.userAgent.substring(0,80);
+    existing={id:'kreq_'+Date.now().toString(36)+Math.random().toString(36).substring(2,7),
+      fbUid:uid,deviceLabel:label,requestedAt:new Date().toISOString(),
+      requestedBy:CU?(CU.name||CU.username):'Unknown',status:'pending'};
+    reqs.push(existing);
+    if(reqs.length>100)reqs=reqs.slice(-100);
+    saveKioskDeviceRequests(reqs);
+    if(typeof tgSend==='function')tgSend('🔒 New Attendance Kiosk device request\nRequested by: '+existing.requestedBy+'\nDevice: '+existing.deviceLabel+'\nTime: '+(typeof tgNow==='function'?tgNow():new Date().toISOString()));
+  }
+  toast('Request sent to Owner — waiting for approval');
+  if(window._kioskDevWaitPoll)clearInterval(window._kioskDevWaitPoll);
+  window._kioskDevWaitPoll=setInterval(function(){
+    if(isThisDeviceApprovedForKiosk()){
+      clearInterval(window._kioskDevWaitPoll);window._kioskDevWaitPoll=null;
+      toast('✅ This device is now approved — starting Kiosk Mode');
+      renderFaceKioskTab();
+    }
+  },3000);
+  renderFaceKioskTab();
+}
+function approveKioskDevice(reqId){
+  if(!CU||CU.role!=='owner'){toast('Owner only',true);return;}
+  var reqs=getKioskDeviceRequests();
+  var req=reqs.find(function(r){return r.id===reqId;});
+  if(!req||req.status!=='pending')return;
+  var current=getApprovedKioskDevices();
+  var existing=current.filter(function(d){return d.fbUid!==req.fbUid;});
+  if(existing.length){
+    var names=existing.map(function(d){return d.deviceLabel;}).join(', ');
+    if(!confirm('Only one device can be the Attendance Kiosk at a time. Approving this device will replace the current one ('+names+') — it will stop working for Kiosk Mode. Continue?'))return;
+  }
+  req.status='approved';req.resolvedAt=new Date().toISOString();req.resolvedBy=CU.name||CU.username;
+  saveKioskDeviceRequests(reqs);
+  saveApprovedKioskDevices([{fbUid:req.fbUid,deviceLabel:req.deviceLabel,approvedAt:new Date().toISOString(),approvedBy:CU.name||CU.username}]);
+  toast('✅ Device approved as the Attendance Kiosk');
+  renderKioskDevicesTab();
+}
+function rejectKioskDevice(reqId){
+  if(!CU||CU.role!=='owner'){toast('Owner only',true);return;}
+  var reqs=getKioskDeviceRequests();
+  var req=reqs.find(function(r){return r.id===reqId;});
+  if(!req||req.status!=='pending')return;
+  if(!confirm('Reject this device request?'))return;
+  req.status='rejected';req.resolvedAt=new Date().toISOString();req.resolvedBy=CU.name||CU.username;
+  saveKioskDeviceRequests(reqs);
+  toast('✕ Device request rejected');
+  renderKioskDevicesTab();
+}
+function revokeKioskDevice(fbUid){
+  if(!CU||CU.role!=='owner'){toast('Owner only',true);return;}
+  if(!confirm('Revoke this device\'s Attendance Kiosk approval? No device will be able to run Kiosk Mode until a new one is approved.'))return;
+  saveApprovedKioskDevices(getApprovedKioskDevices().filter(function(d){return d.fbUid!==fbUid;}));
+  toast('✓ Device access revoked');
+  renderKioskDevicesTab();
+}
+function renderKioskDevicesTab(){
+  var el=document.getElementById('face-body');if(!el)return;
+  var pending=getKioskDeviceRequests().filter(function(r){return r.status==='pending';});
+  var approved=getApprovedKioskDevices();
+  var current=approved.length?approved[0]:null;
+  var html='<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Only one device can be the Attendance Kiosk at a time — this is separate from normal login-device approval, since a kiosk silently logs attendance for anyone who walks up to it. Approving a new device automatically replaces whichever one was approved before.</div>';
+
+  html+='<div style="font-size:13px;font-weight:800;margin-bottom:8px;">📷 Current Kiosk Device</div>';
+  if(!current){
+    html+='<div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:16px;">No device approved yet — approve one below once it requests access.</div>';
+  } else {
+    html+='<div class="mrow" style="background:#fff;margin-bottom:16px;">';
+    html+='<div class="mrow-main"><div class="mrow-title">✅ '+current.deviceLabel+'</div><div class="mrow-sub">Approved '+current.approvedAt.substring(0,10)+' by '+current.approvedBy+'</div></div>';
+    html+='<div class="mrow-action"><button data-uid="'+current.fbUid+'" onclick="revokeKioskDevice(this.dataset.uid)" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;">Revoke</button></div>';
+    html+='</div>';
+  }
+
+  html+='<div style="font-size:13px;font-weight:800;margin-bottom:8px;">⏳ Pending Requests</div>';
+  if(!pending.length)html+='<div style="font-size:12px;color:var(--muted);font-style:italic;">None right now.</div>';
+  else{
+    pending.forEach(function(r){
+      html+='<div class="mrow" style="background:#fff;">';
+      html+='<div class="mrow-main"><div class="mrow-title">'+r.requestedBy+'</div><div class="mrow-sub">'+r.deviceLabel+' · '+r.requestedAt.substring(0,10)+'</div></div>';
+      html+='<div class="mrow-action" style="display:flex;gap:6px;">';
+      html+='<button data-id="'+r.id+'" onclick="approveKioskDevice(this.dataset.id)" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;">✓ Approve</button>';
+      html+='<button data-id="'+r.id+'" onclick="rejectKioskDevice(this.dataset.id)" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;">✕ Reject</button>';
+      html+='</div></div>';
+    });
+  }
+  el.innerHTML=html;
 }
 
 // ── Enroll Staff ────────────────────────────────────────────────────────
@@ -9137,17 +9266,30 @@ function closeFaceEnrollCamera(){
 function renderFaceKioskTab(){
   var el=document.getElementById('face-body');if(!el)return;
   var enrollments=getFaceEnrollments();
+  var deviceOk=isThisDeviceApprovedForKiosk();
   var html='<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;">';
   html+='<div style="font-size:14px;font-weight:800;margin-bottom:8px;">📷 Kiosk Mode</div>';
   html+='<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Mount this device near the entrance and start Kiosk Mode. Staff walk up, the camera recognizes their face, and it automatically logs them in or out — no login or tapping needed. Tap Exit (with confirmation) to leave kiosk mode and use the device normally again.</div>';
   html+='<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'+enrollments.length+' staff member'+(enrollments.length!==1?'s':'')+' enrolled and ready to be recognized.</div>';
-  html+='<button onclick="startKioskMode()" style="width:100%;padding:14px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;">▶ Start Kiosk Mode</button>';
+  if(!deviceOk){
+    var uid=myFbUid();
+    var pendingReq=uid?getKioskDeviceRequests().find(function(r){return r.fbUid===uid&&r.status==='pending';}):null;
+    html+='<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:#92400e;">⚠ This device is not approved to run Attendance Kiosk yet. Only devices the Owner has approved can run the kiosk, since it logs attendance for anyone who walks up to it.</div>';
+    if(pendingReq){
+      html+='<div style="width:100%;padding:14px;background:#f1f5f9;color:#374151;border-radius:10px;font-size:14px;font-weight:700;text-align:center;">⏳ Waiting for Owner approval…</div>';
+    } else {
+      html+='<button onclick="requestKioskDeviceApproval()" style="width:100%;padding:14px;background:#6366f1;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;">🔒 Request Approval from Owner</button>';
+    }
+  } else {
+    html+='<button onclick="startKioskMode()" style="width:100%;padding:14px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;">▶ Start Kiosk Mode</button>';
+  }
   html+='</div>';
   el.innerHTML=html;
 }
 
 var _kioskStream=null,_kioskInterval=null,_kioskCooldownUntil=0,_kioskMatcher=null,_kioskEnrollments=[];
 async function startKioskMode(){
+  if(!isThisDeviceApprovedForKiosk()){toast('This device is not approved for Kiosk Mode',true);renderFaceKioskTab();return;}
   var ok=await loadFaceModels();
   if(!ok)return;
   _kioskEnrollments=getFaceEnrollments();
@@ -9240,7 +9382,7 @@ function exitKioskMode(){
 // every other check-in/out (default 5).
 function getAttendSchedule(){
   return Object.assign({in1:'06:00',out1:'12:00',in2:'12:30',out2:'17:00',in3:'17:00',out3:'22:00',
-    tolFirstMin:60,tolOtherMin:5},S.get('attendance_schedule')||{});
+    tolFirstMin:60,tolOtherMin:5,presencePolicy:'checkinout',otEnabled:true},S.get('attendance_schedule')||{});
 }
 function saveAttendSchedule(sch){S.set('attendance_schedule',sch);}
 
@@ -9289,28 +9431,53 @@ function buildPayrollAttendance(month){
       var dayScans=scans.filter(function(s){return s.name===p.name&&s.timestamp.substring(0,10)===dateStr;})
         .sort(function(a,b){return new Date(a.timestamp)-new Date(b.timestamp);});
 
-      var regPresence=0; // 0, 0.5, or 1 for the day
+      var regPresence=0; // 0 or 1 for the day — a missed check-out earns no credit (unless policy says check-in alone counts)
+      var missedCheckout=false;
       var dayOTHours=0;
-      var pairCount=Math.floor(dayScans.length/2);
-      for(var pi=0;pi<pairCount;pi++){
-        var inScan=dayScans[pi*2],outScan=dayScans[pi*2+1];
-        var inMin=(new Date(inScan.timestamp)).getHours()*60+(new Date(inScan.timestamp)).getMinutes();
-        if(inMin>=otBoundaryMin){
-          var hrs=(new Date(outScan.timestamp)-new Date(inScan.timestamp))/3600000;
-          if(hrs>0)dayOTHours+=hrs;
-        } else {
-          regPresence=1; // a completed regular pair = full day credit
+      var checkinOnly=(schedule.presencePolicy==='checkinonly');
+
+      if(checkinOnly){
+        // Presence only needs a check-in — this staff member's check-out
+        // isn't required (e.g. they can't reliably scan out) and isn't
+        // held against them.
+        if(dayScans.length>0)regPresence=1;
+        if(schedule.otEnabled){
+          var pairCountCI=Math.floor(dayScans.length/2);
+          for(var pj=0;pj<pairCountCI;pj++){
+            var inScanCI=dayScans[pj*2],outScanCI=dayScans[pj*2+1];
+            var inMinCI=(new Date(inScanCI.timestamp)).getHours()*60+(new Date(inScanCI.timestamp)).getMinutes();
+            if(inMinCI>=otBoundaryMin){
+              var hrsCI=(new Date(outScanCI.timestamp)-new Date(inScanCI.timestamp))/3600000;
+              if(hrsCI>0)dayOTHours+=hrsCI;
+            }
+          }
+        }
+      } else {
+        var pairCount=Math.floor(dayScans.length/2);
+        for(var pi=0;pi<pairCount;pi++){
+          var inScan=dayScans[pi*2],outScan=dayScans[pi*2+1];
+          var inMin=(new Date(inScan.timestamp)).getHours()*60+(new Date(inScan.timestamp)).getMinutes();
+          if(inMin>=otBoundaryMin){
+            if(schedule.otEnabled){
+              var hrs=(new Date(outScan.timestamp)-new Date(inScan.timestamp))/3600000;
+              if(hrs>0)dayOTHours+=hrs;
+            }
+          } else {
+            regPresence=1; // a completed regular pair = full day credit
+          }
+        }
+        if(regPresence<1&&dayScans.length%2===1){
+          // Checked in but never checked out that shift — no credit, but the
+          // cell still flags it so it's visibly different from a genuine
+          // no-show (which is entirely their responsibility per policy).
+          var lastIn=dayScans[dayScans.length-1];
+          var lastMin=(new Date(lastIn.timestamp)).getHours()*60+(new Date(lastIn.timestamp)).getMinutes();
+          if(lastMin<otBoundaryMin)missedCheckout=true;
         }
       }
-      if(regPresence<1&&dayScans.length%2===1){
-        // trailing unmatched check-in with no check-out yet
-        var lastIn=dayScans[dayScans.length-1];
-        var lastMin=(new Date(lastIn.timestamp)).getHours()*60+(new Date(lastIn.timestamp)).getMinutes();
-        if(lastMin<otBoundaryMin)regPresence=Math.max(regPresence,0.5);
-      }
 
-      regCells.push(regPresence===1?'P':regPresence===0.5?'½':'');
-      otCells.push(dayOTHours>0?(Math.round(dayOTHours*100)/100):'');
+      regCells.push(regPresence===1?'P':missedCheckout?'⚠':'');
+      otCells.push(!schedule.otEnabled?'—':(dayOTHours>0?(Math.round(dayOTHours*100)/100):''));
       totalDays+=regPresence;
       totalOTHours+=dayOTHours;
 
@@ -9333,7 +9500,7 @@ function buildPayrollAttendance(month){
       });
     }
     return {no:idx+1,name:p.name,regCells:regCells,otCells:otCells,
-      totalDays:Math.round(totalDays*10)/10,totalOTHours:Math.round(totalOTHours*100)/100};
+      totalDays:Math.round(totalDays*10)/10,totalOTHours:schedule.otEnabled?Math.round(totalOTHours*100)/100:'—'};
   });
   return {rows:rows,exceptions:exceptions,daysInMonth:daysInMonth};
 }
@@ -9424,20 +9591,22 @@ function renderStaffScheduleOverridesCard(){
   var people=getAttendPeople();
   var overrides=getAttendScheduleOverrides();
   var html='<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px;">';
-  html+='<div style="font-size:13px;font-weight:800;margin-bottom:4px;">👤 Per-Staff Hours</div>';
-  html+='<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Only staff with different hours need a custom schedule — everyone else automatically uses the default above.</div>';
+  html+='<div style="font-size:13px;font-weight:800;margin-bottom:4px;">👤 Per-Staff Attendance Policy</div>';
+  html+='<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Only staff with different hours, presence rules, or OT need a custom policy — everyone else automatically uses the default above.</div>';
   if(!people.length){
     html+='<div style="font-size:12px;color:var(--muted);font-style:italic;">Add staff in the Staff tab first.</div>';
   } else {
     people.forEach(function(p){
       var has=!!overrides[p.id];
+      var sch=getAttendScheduleFor(p.id);
+      var policyText=has?((sch.presencePolicy==='checkinonly'?'Check-in only':'Check-in + check-out')+' · OT '+(sch.otEnabled?'on':'off')):'Using default policy';
       html+='<div class="mrow" style="background:#fff;">';
       html+='<div class="mrow-main">';
       html+='<div class="mrow-title">'+p.name+'</div>';
-      html+='<div class="mrow-sub">'+(has?'Custom schedule set':'Using default schedule')+'</div>';
+      html+='<div class="mrow-sub">'+policyText+'</div>';
       html+='</div>';
       html+='<div class="mrow-action" style="display:flex;gap:6px;">';
-      html+='<button data-id="'+p.id+'" data-name="'+p.name.replace(/"/g,'&quot;')+'" onclick="openStaffScheduleModal(this.dataset.id,this.dataset.name)" style="background:'+(has?'#eef2ff':'#f1f5f9')+';color:'+(has?'#4338ca':'#374151')+';border:none;border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;">'+(has?'✏️ Edit':'➕ Set Custom Hours')+'</button>';
+      html+='<button data-id="'+p.id+'" data-name="'+p.name.replace(/"/g,'&quot;')+'" onclick="openStaffScheduleModal(this.dataset.id,this.dataset.name)" style="background:'+(has?'#eef2ff':'#f1f5f9')+';color:'+(has?'#4338ca':'#374151')+';border:none;border-radius:6px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;">'+(has?'✏️ Edit':'➕ Set Custom Policy')+'</button>';
       if(has)html+='<button data-id="'+p.id+'" data-name="'+p.name.replace(/"/g,'&quot;')+'" onclick="removeStaffScheduleOverride(this.dataset.id,this.dataset.name)" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:700;cursor:pointer;">✕</button>';
       html+='</div></div>';
     });
@@ -9447,11 +9616,13 @@ function renderStaffScheduleOverridesCard(){
 }
 function openStaffScheduleModal(personId,personName){
   var sch=getAttendScheduleFor(personId);
-  document.getElementById('m-staff-sch-title').textContent='Custom Hours: '+personName;
+  document.getElementById('m-staff-sch-title').textContent='Custom Policy: '+personName;
   document.getElementById('staff-sch-personid').value=personId;
   ['in1','out1','in2','out2','in3','out3'].forEach(function(k){document.getElementById('staff-sch-'+k).value=sch[k];});
   document.getElementById('staff-sch-tolFirstMin').value=sch.tolFirstMin||60;
   document.getElementById('staff-sch-tolOtherMin').value=sch.tolOtherMin||5;
+  document.getElementById('staff-sch-presencePolicy').value=sch.presencePolicy||'checkinout';
+  document.getElementById('staff-sch-otEnabled').checked=sch.otEnabled!==false;
   document.getElementById('m-staff-schedule').classList.add('on');
 }
 function saveStaffScheduleModal(){
@@ -9465,10 +9636,12 @@ function saveStaffScheduleModal(){
     out3:document.getElementById('staff-sch-out3').value||'22:00',
     tolFirstMin:parseInt(document.getElementById('staff-sch-tolFirstMin').value,10)||60,
     tolOtherMin:parseInt(document.getElementById('staff-sch-tolOtherMin').value,10)||5,
+    presencePolicy:document.getElementById('staff-sch-presencePolicy').value,
+    otEnabled:document.getElementById('staff-sch-otEnabled').checked,
   };
   saveAttendScheduleOverrideFor(personId,sch);
   closeM('m-staff-schedule');
-  toast('✓ Custom hours saved');
+  toast('✓ Custom policy saved');
   renderFaceAttend();
 }
 function removeStaffScheduleOverride(personId,personName){
@@ -9535,7 +9708,7 @@ function exportExamplePayrollExcel(){
   var daysInMonth=30;
   var exampleRows=[
     {no:1,name:'Example: Dara (on time every day)',regCells:[],otCells:[],totalDays:0,totalOTHours:0},
-    {no:2,name:'Example: Sopheak (half-days & absences)',regCells:[],otCells:[],totalDays:0,totalOTHours:0},
+    {no:2,name:'Example: Sopheak (absences & a missed check-out)',regCells:[],otCells:[],totalDays:0,totalOTHours:0},
     {no:3,name:'Example: Vanna (regular + OT some days)',regCells:[],otCells:[],totalDays:0,totalOTHours:0},
   ];
   for(var d=1;d<=daysInMonth;d++){
@@ -9543,7 +9716,7 @@ function exportExamplePayrollExcel(){
     else{exampleRows[0].regCells.push('P');exampleRows[0].otCells.push('');exampleRows[0].totalDays+=1;}
 
     if(d%5===0){exampleRows[1].regCells.push('');exampleRows[1].otCells.push('');}
-    else if(d%3===0){exampleRows[1].regCells.push('½');exampleRows[1].otCells.push('');exampleRows[1].totalDays+=0.5;}
+    else if(d%3===0){exampleRows[1].regCells.push('⚠');exampleRows[1].otCells.push('');} // checked in, forgot to check out — no credit
     else{exampleRows[1].regCells.push('P');exampleRows[1].otCells.push('');exampleRows[1].totalDays+=1;}
 
     exampleRows[2].regCells.push('P');exampleRows[2].totalDays+=1;
@@ -9563,8 +9736,8 @@ function exportExamplePayrollExcel(){
     ['This sheet uses made-up example data only — nothing here is real.'],
     [''],
     ['P = full day (checked in and completed a regular shift with a matching check-out)'],
-    ['½ = half day (checked in, but no matching check-out yet)'],
-    ['blank = absent that day'],
+    ['⚠ = checked in but never checked out that shift — counts as ZERO, not half. A missed check-out is the staff member\'s responsibility.'],
+    ['blank = absent that day (no scans at all)'],
     ['OT column = hours worked on a check-in/out pair starting at or after '+schedule.in3+' (your current OT start time)'],
     ['Total Days / Total OT Hrs = the month\'s totals, for payroll'],
   ]);
