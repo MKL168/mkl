@@ -300,6 +300,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 <body>
 
@@ -389,6 +390,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
     <button class="tb" onclick="sTab('leave',this)">🏖 Leave</button>
     <button class="tb" onclick="sTab('finance',this)">💰 Finance</button>
     <button class="tb" onclick="sTab('attend',this)">📅 Attendance</button>
+    <button class="tb" onclick="sTab('faceattend',this)">📷 Face Attendance</button>
     <button class="tb" onclick="sTab('inventory',this)">📦 Inventory</button>
     <button class="tb" onclick="sTab('done',this)">✅ Done</button>
   </div>
@@ -584,6 +586,14 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
       <button onclick="saveOpsSettings()" style="width:100%;padding:10px;background:#0ea5e9;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Save Operations Settings</button>
     </div>
 
+  </div>
+  <div id="st-faceattend" style="display:none;padding:12px;">
+    <div class="tabs" style="border-top:none;padding-left:0;">
+      <button class="tb on" onclick="faceTab('enroll',this)">👤 Enroll Staff</button>
+      <button class="tb" onclick="faceTab('kiosk',this)">📷 Kiosk Mode</button>
+      <button class="tb" onclick="faceTab('log',this)">📋 Attendance Log</button>
+    </div>
+    <div id="face-body" style="padding-top:12px;"></div>
   </div>
   <div id="st-inventory" style="display:none">
     <div class="tabs" style="border-top:none;">
@@ -873,6 +883,35 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
     </div>
     <div class="ff"><label class="fl">Reorder Level <span style="font-size:10px;color:var(--muted);font-weight:400;">(flag when balance falls to or below this)</span></label><input class="fi" id="inv-item-reorder" type="number" min="0" step="any" placeholder="0"></div>
     <div class="mact"><button class="mbtn-c" onclick="closeM('m-inv-item')">Cancel</button><button class="mbtn-s" onclick="saveInvItem()">Save Item</button></div>
+  </div>
+</div>
+
+<!-- FACE ENROLLMENT MODAL -->
+<div class="mbg" id="m-face-enroll">
+  <div class="modal" style="max-width:440px;">
+    <div class="mh"><span id="m-face-enroll-title">Enroll Face</span><button class="mc" onclick="closeFaceEnrollCamera()">✕</button></div>
+    <div style="background:#000;border-radius:10px;overflow:hidden;margin-bottom:12px;position:relative;">
+      <video id="face-enroll-video" autoplay muted playsinline style="width:100%;display:block;transform:scaleX(-1);"></video>
+    </div>
+    <div id="face-enroll-status" style="text-align:center;font-size:13px;font-weight:700;color:var(--muted);margin-bottom:6px;">Position your face in the frame</div>
+    <div id="face-enroll-count" style="text-align:center;font-size:12px;color:var(--muted);margin-bottom:12px;">0 / 3 captured</div>
+    <div class="mact">
+      <button class="mbtn-c" onclick="closeFaceEnrollCamera()">Cancel</button>
+      <button class="mbtn-s" onclick="captureFaceEnrollPhoto()" style="background:#0891b2;">📸 Capture</button>
+    </div>
+    <button id="face-enroll-save" onclick="saveFaceEnrollmentNow()" disabled style="width:100%;margin-top:8px;padding:11px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;opacity:.5;">✓ Save Enrollment</button>
+  </div>
+</div>
+
+<!-- KIOSK MODE FULL-SCREEN OVERLAY -->
+<div id="face-kiosk-overlay" style="display:none;position:fixed;inset:0;z-index:999999;background:#000;">
+  <video id="face-kiosk-video" autoplay muted playsinline style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
+  <div style="position:absolute;top:0;left:0;right:0;padding:16px;background:linear-gradient(rgba(0,0,0,.6),transparent);display:flex;justify-content:space-between;align-items:center;">
+    <div style="color:#fff;font-weight:800;font-size:14px;">📷 MKL Attendance Kiosk</div>
+    <button onclick="exitKioskMode()" style="padding:8px 14px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">✕ Exit</button>
+  </div>
+  <div id="face-kiosk-status" style="position:absolute;bottom:0;left:0;right:0;padding:28px 16px;background:linear-gradient(transparent,rgba(0,0,0,.75));text-align:center;color:#fff;font-size:16px;font-weight:700;">
+    👀 Looking for a face...
   </div>
 </div>
 
@@ -1267,7 +1306,7 @@ const firebaseConfig={
 // intentionally excluded — those are per-device/local-only by design.
 const SYNC_KEYS=['absences','advances','boiler_history','boiler_log','boiler_settings','boiler_warnings',
   'clean_log','clean_settings','counter','customers','dayoffs','deleted_user_ids','device_requests','done','expenses',
-  'generated_keys','inventory_categories','inventory_items','inventory_tx','issues','jobs','last_backup','leaves','login_log','ops_history','ops_log','ops_settings',
+  'attendance_scans','face_enrollments','generated_keys','inventory_categories','inventory_items','inventory_tx','issues','jobs','last_backup','leaves','login_log','ops_history','ops_log','ops_settings',
   'ot_records','ot_schedules','perf_appeals','perf_log','simple_jobs','staff','times','users','violations','workers_data'];
 let fbDB=null, fbReady=false;
 
@@ -1338,8 +1377,16 @@ function fbInit(cb){
     firebase.initializeApp(firebaseConfig);
     fbDB=firebase.database();
     firebase.auth().signInAnonymously().then(function(){
-      fbReady=true;
-      fbPullAll(function(){clearTimeout(failSafe);fbListenRemote();done();});
+      // fbReady must only flip AFTER the initial pull finishes — not before.
+      // Setting it early would let this device push its (possibly outdated)
+      // local data to Firebase before it has caught up on what other devices
+      // already changed, silently overwriting newer data with older data.
+      fbPullAll(function(){
+        fbReady=true;
+        clearTimeout(failSafe);
+        fbListenRemote();
+        done();
+      });
     }).catch(function(e){console.warn('[Sync] Anonymous sign-in failed, running offline:',e);clearTimeout(failSafe);done();});
   }catch(e){console.warn('[Sync] Firebase init failed, running offline:',e);clearTimeout(failSafe);done();}
 }
@@ -8275,7 +8322,7 @@ function sTab(tab,btn){
   curSupTab=tab;
   document.querySelectorAll('#pg-sup .tabs .tb').forEach(function(b){b.classList.remove('on');});
   btn.classList.add('on');
-  ['dash','jobs','custs','staff','issues','users','times','cleaning','boiler','ops','perf','leave','finance','attend','inventory','done'].forEach(function(t){
+  ['dash','jobs','custs','staff','issues','users','times','cleaning','boiler','ops','perf','leave','finance','attend','faceattend','inventory','done'].forEach(function(t){
     var el=document.getElementById('st-'+t);
     if(el)el.style.display=t===tab?'block':'none';
   });
@@ -8285,6 +8332,7 @@ function sTab(tab,btn){
   else if(tab==='custs'){fab.onclick=openCustModal;renderCusts();}
   else if(tab==='issues'){fab.onclick=openIssModal;renderIssues();}
   else if(tab==='inventory'){fab.onclick=function(){openInvItemModal();};renderInventory();}
+  else if(tab==='faceattend'){renderFaceAttend();}
   else if(tab==='users'){fab.onclick=openUserModal;renderUsers();renderLoginLog();renderBackupStatus();renderLicensePanel();renderDeviceApprovals();renderDeviceManagement();}
   if(tab==='times'){
     renderTimesPanel();renderTimesCleanAreas();renderOpsMgrDropdown();
@@ -8939,6 +8987,249 @@ function getAttendPeople(){
   });
   if(staffList.length)return staffList;
   return getUsers().filter(function(u){return u.status==='active';});
+}
+
+// ═══ FACE ATTENDANCE (camera-based clock in/out) ═══════════════════════════
+function getFaceEnrollments(){return S.get('face_enrollments')||[];}
+function saveFaceEnrollments(list){S.set('face_enrollments',list);}
+function getAttendanceScans(){return S.get('attendance_scans')||[];}
+function saveAttendanceScans(list){S.set('attendance_scans',list);}
+
+const FACE_MODELS_URL='https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+async function loadFaceModels(){
+  if(window._faceModelsLoaded)return true;
+  if(typeof faceapi==='undefined'){toast('Face recognition library failed to load — check internet connection',true);return false;}
+  try{
+    toast('Loading face recognition models…');
+    await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODELS_URL);
+    await faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODELS_URL);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODELS_URL);
+    window._faceModelsLoaded=true;
+    return true;
+  }catch(e){
+    console.error('Face model load failed',e);
+    toast('Could not load face recognition models — check internet connection',true);
+    return false;
+  }
+}
+
+function faceTab(tab,btn){
+  window._faceTab=tab;
+  document.querySelectorAll('#st-faceattend .tb').forEach(function(b){b.classList.remove('on');});
+  if(btn)btn.classList.add('on');
+  renderFaceAttend();
+}
+function renderFaceAttend(){
+  var tab=window._faceTab||'enroll';
+  if(tab==='enroll')renderFaceEnrollTab();
+  else if(tab==='kiosk')renderFaceKioskTab();
+  else renderFaceLogTab();
+}
+
+// ── Enroll Staff ────────────────────────────────────────────────────────
+function renderFaceEnrollTab(){
+  var el=document.getElementById('face-body');if(!el)return;
+  var people=getAttendPeople();
+  var enrollments=getFaceEnrollments();
+  if(!people.length){el.innerHTML='<div class="empty-s"><div class="ei">👤</div>Add staff in the Staff tab first.</div>';return;}
+  var html='<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Enroll each staff member\'s face once. This captures 3 photos and stores a face pattern (not the photos themselves) for the kiosk to recognize them by.</div>';
+  people.forEach(function(p){
+    var enrolled=enrollments.find(function(e){return e.userId===p.id;});
+    html+='<div class="mrow" style="background:#fff;">';
+    html+='<div class="mrow-main">';
+    html+='<div class="mrow-title">'+(enrolled?'✅ ':'⬜ ')+p.name+'</div>';
+    html+='<div class="mrow-sub">'+(enrolled?'Enrolled '+enrolled.enrolledAt.substring(0,10)+' by '+enrolled.enrolledBy:'Not enrolled yet')+'</div>';
+    html+='</div>';
+    html+='<div class="mrow-action"><button data-id="'+p.id+'" data-name="'+p.name.replace(/"/g,'&quot;')+'" onclick="openFaceEnrollCamera(this.dataset.id,this.dataset.name)" style="background:'+(enrolled?'#f1f5f9':'#0891b2')+';color:'+(enrolled?'#374151':'#fff')+';border:none;border-radius:6px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;">'+(enrolled?'🔄 Re-enroll':'📷 Enroll')+'</button></div>';
+    html+='</div>';
+  });
+  el.innerHTML=html;
+}
+
+var _enrollStream=null,_enrollCaptures=[],_enrollPersonId=null,_enrollPersonName=null;
+async function openFaceEnrollCamera(personId,personName){
+  var ok=await loadFaceModels();
+  if(!ok)return;
+  _enrollPersonId=personId;
+  _enrollPersonName=personName;
+  _enrollCaptures=[];
+  document.getElementById('m-face-enroll-title').textContent='Enroll: '+personName;
+  document.getElementById('face-enroll-status').textContent='Position your face in the frame';
+  document.getElementById('face-enroll-count').textContent='0 / 3 captured';
+  var saveBtn=document.getElementById('face-enroll-save');
+  saveBtn.disabled=true;saveBtn.style.opacity='.5';
+  document.getElementById('m-face-enroll').classList.add('on');
+  try{
+    _enrollStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
+    document.getElementById('face-enroll-video').srcObject=_enrollStream;
+  }catch(e){
+    toast('Camera access denied or unavailable',true);
+    closeFaceEnrollCamera();
+  }
+}
+async function captureFaceEnrollPhoto(){
+  var video=document.getElementById('face-enroll-video');
+  var statusEl=document.getElementById('face-enroll-status');
+  statusEl.textContent='Detecting face…';
+  var detection=await faceapi.detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
+    .withFaceLandmarks().withFaceDescriptor();
+  if(!detection){
+    statusEl.textContent='⚠ No face detected — face the camera and try again';
+    return;
+  }
+  _enrollCaptures.push(Array.from(detection.descriptor));
+  document.getElementById('face-enroll-count').textContent=_enrollCaptures.length+' / 3 captured';
+  statusEl.textContent='✓ Captured '+_enrollCaptures.length+'/3 — move slightly between captures';
+  if(_enrollCaptures.length>=3){
+    var saveBtn=document.getElementById('face-enroll-save');
+    saveBtn.disabled=false;saveBtn.style.opacity='1';
+    statusEl.textContent='✓ Ready to save';
+  }
+}
+function saveFaceEnrollmentNow(){
+  if(_enrollCaptures.length<3){toast('Capture 3 photos first',true);return;}
+  var avg=new Array(128).fill(0);
+  _enrollCaptures.forEach(function(d){d.forEach(function(v,i){avg[i]+=v/_enrollCaptures.length;});});
+  var enrollments=getFaceEnrollments().filter(function(e){return e.userId!==_enrollPersonId;});
+  enrollments.push({
+    userId:_enrollPersonId,name:_enrollPersonName,descriptor:avg,
+    enrolledAt:new Date().toISOString(),enrolledBy:CU?(CU.name||CU.username):'Unknown'
+  });
+  saveFaceEnrollments(enrollments);
+  closeFaceEnrollCamera();
+  toast('✓ Face enrolled for '+_enrollPersonName);
+  renderFaceEnrollTab();
+}
+function closeFaceEnrollCamera(){
+  if(_enrollStream){_enrollStream.getTracks().forEach(function(t){t.stop();});_enrollStream=null;}
+  closeM('m-face-enroll');
+}
+
+// ── Kiosk Mode ───────────────────────────────────────────────────────────
+function renderFaceKioskTab(){
+  var el=document.getElementById('face-body');if(!el)return;
+  var enrollments=getFaceEnrollments();
+  var html='<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;">';
+  html+='<div style="font-size:14px;font-weight:800;margin-bottom:8px;">📷 Kiosk Mode</div>';
+  html+='<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Mount this device near the entrance and start Kiosk Mode. Staff walk up, the camera recognizes their face, and it automatically logs them in or out — no login or tapping needed. Tap Exit (with confirmation) to leave kiosk mode and use the device normally again.</div>';
+  html+='<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'+enrollments.length+' staff member'+(enrollments.length!==1?'s':'')+' enrolled and ready to be recognized.</div>';
+  html+='<button onclick="startKioskMode()" style="width:100%;padding:14px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;">▶ Start Kiosk Mode</button>';
+  html+='</div>';
+  el.innerHTML=html;
+}
+
+var _kioskStream=null,_kioskInterval=null,_kioskCooldownUntil=0,_kioskMatcher=null,_kioskEnrollments=[];
+async function startKioskMode(){
+  var ok=await loadFaceModels();
+  if(!ok)return;
+  _kioskEnrollments=getFaceEnrollments();
+  if(!_kioskEnrollments.length){toast('Enroll at least one staff face first',true);return;}
+  var overlay=document.getElementById('face-kiosk-overlay');
+  overlay.style.display='block';
+  var video=document.getElementById('face-kiosk-video');
+  var statusEl=document.getElementById('face-kiosk-status');
+  statusEl.textContent='Starting camera…';
+  try{
+    _kioskStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
+    video.srcObject=_kioskStream;
+  }catch(e){
+    toast('Camera access denied or unavailable',true);
+    overlay.style.display='none';
+    return;
+  }
+  var labeledDescriptors=_kioskEnrollments.map(function(en){
+    return new faceapi.LabeledFaceDescriptors(en.userId,[new Float32Array(en.descriptor)]);
+  });
+  _kioskMatcher=new faceapi.FaceMatcher(labeledDescriptors,0.5);
+  statusEl.textContent='👀 Looking for a face…';
+  if(_kioskInterval)clearInterval(_kioskInterval);
+  _kioskInterval=setInterval(kioskScanTick,1000);
+}
+async function kioskScanTick(){
+  if(Date.now()<_kioskCooldownUntil)return;
+  var video=document.getElementById('face-kiosk-video');
+  var statusEl=document.getElementById('face-kiosk-status');
+  if(!video||!video.srcObject)return;
+  var detection=await faceapi.detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
+    .withFaceLandmarks().withFaceDescriptor();
+  if(!detection){statusEl.innerHTML='👀 Looking for a face…';return;}
+  var match=_kioskMatcher.findBestMatch(detection.descriptor);
+  if(match.label==='unknown'){
+    statusEl.innerHTML='<span style="color:#fbbf24;">⚠ Face not recognized — ask admin to enroll you</span>';
+    _kioskCooldownUntil=Date.now()+2500;
+    return;
+  }
+  var person=_kioskEnrollments.find(function(en){return en.userId===match.label;});
+  if(person)logFaceAttendanceScan(person);
+  _kioskCooldownUntil=Date.now()+6000;
+}
+function logFaceAttendanceScan(person){
+  var scans=getAttendanceScans();
+  var today=todayStr();
+  var todaysScans=scans.filter(function(s){return s.userId===person.userId&&s.timestamp.substring(0,10)===today;})
+    .sort(function(a,b){return new Date(a.timestamp)-new Date(b.timestamp);});
+  var lastType=todaysScans.length?todaysScans[todaysScans.length-1].type:'out';
+  var type=lastType==='in'?'out':'in';
+  var scan={
+    id:'fscan_'+Date.now().toString(36)+Math.random().toString(36).substring(2,6),
+    userId:person.userId,name:person.name,type:type,
+    timestamp:new Date().toISOString(),
+  };
+  scans.push(scan);
+  saveAttendanceScans(scans);
+  var statusEl=document.getElementById('face-kiosk-status');
+  statusEl.innerHTML='<div style="font-size:26px;font-weight:900;color:'+(type==='in'?'#4ade80':'#f87171')+';">✓ '+person.name+'</div>'
+    +'<div style="font-size:15px;margin-top:4px;">Clocked '+(type==='in'?'IN':'OUT')+' at '+fmtT(scan.timestamp)+'</div>';
+}
+function exitKioskMode(){
+  if(!confirm('Exit Kiosk Mode?'))return;
+  if(_kioskInterval){clearInterval(_kioskInterval);_kioskInterval=null;}
+  if(_kioskStream){_kioskStream.getTracks().forEach(function(t){t.stop();});_kioskStream=null;}
+  document.getElementById('face-kiosk-overlay').style.display='none';
+}
+
+// ── Attendance Log ───────────────────────────────────────────────────────
+function renderFaceLogTab(){
+  var el=document.getElementById('face-body');if(!el)return;
+  var scans=getAttendanceScans().slice().sort(function(a,b){return new Date(b.timestamp)-new Date(a.timestamp);});
+  var html='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">';
+  html+='<div style="flex:1;font-size:12px;color:var(--muted);">'+scans.length+' scan'+(scans.length!==1?'s':'')+' recorded</div>';
+  html+='<button onclick="exportFaceAttendanceExcel()" style="padding:8px 16px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">⬇ Export Excel</button>';
+  html+='</div>';
+  if(!scans.length){
+    html+='<div class="empty-s"><div class="ei">📋</div>No attendance scans yet.</div>';
+    el.innerHTML=html;
+    return;
+  }
+  html+='<div class="htable-wrap"><div style="min-width:480px;">';
+  html+='<div style="display:grid;grid-template-columns:1.3fr 90px 130px 100px;background:#1e293b;color:#fff;font-size:10px;font-weight:700;padding:8px 12px;gap:6px;">';
+  html+='<div>Name</div><div>Type</div><div>Date</div><div>Time</div>';
+  html+='</div>';
+  scans.slice(0,200).forEach(function(s,ri){
+    html+='<div style="display:grid;grid-template-columns:1.3fr 90px 130px 100px;padding:7px 12px;gap:6px;align-items:center;background:'+(ri%2===0?'#fff':'#f8fafc')+';border-bottom:1px solid #f1f5f9;font-size:12px;">';
+    html+='<div style="font-weight:700;">'+s.name+'</div>';
+    html+='<div style="color:'+(s.type==='in'?'#16a34a':'#dc2626')+';font-weight:700;">'+(s.type==='in'?'IN':'OUT')+'</div>';
+    html+='<div>'+s.timestamp.substring(0,10)+'</div>';
+    html+='<div>'+fmtT(s.timestamp)+'</div>';
+    html+='</div>';
+  });
+  html+='</div></div>';
+  el.innerHTML=html;
+}
+function exportFaceAttendanceExcel(){
+  if(typeof XLSX==='undefined'){toast('Excel library not loaded',true);return;}
+  var scans=getAttendanceScans().slice().sort(function(a,b){return new Date(a.timestamp)-new Date(b.timestamp);});
+  if(!scans.length){toast('No attendance scans to export',true);return;}
+  var rows=[['Name','Type','Date','Time']];
+  scans.forEach(function(s){
+    rows.push([s.name,(s.type==='in'?'IN':'OUT'),s.timestamp.substring(0,10),fmtT(s.timestamp)]);
+  });
+  var wb=XLSX.utils.book_new();
+  var ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:20},{wch:8},{wch:13},{wch:10}];
+  XLSX.utils.book_append_sheet(wb,ws,'Face Attendance');
+  XLSX.writeFile(wb,'MKL_Face_Attendance_'+todayStr()+'.xlsx');
+  toast('⬇ Attendance log exported');
 }
 
 function renderStaff(){
