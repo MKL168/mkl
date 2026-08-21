@@ -9190,29 +9190,28 @@ function exitKioskMode(){
 
 // ── Attendance Log ───────────────────────────────────────────────────────
 // ── Shift schedule (configurable) ────────────────────────────────────────
-// Three shifts/day: 06:00-12:00 and 12:30-17:00 are regular hours; 17:00-22:00
-// is OT. The very first check-in of the day gets a wide 6:00-7:00 tolerance
-// window; every other check-in/out is judged against +/-5 minutes of its set time.
+// Two regular shifts/day (06:00-12:00, 12:30-17:00); anything at/after the
+// "In 3 / OT start" time is OT. Both tolerance windows are adjustable:
+// tolFirstMin = how many minutes after In 1's set time still count as on-time
+// (default 60, e.g. 6:00-7:00); tolOtherMin = the +/- minutes window used for
+// every other check-in/out (default 5).
 function getAttendSchedule(){
-  return Object.assign({in1:'06:00',out1:'12:00',in2:'12:30',out2:'17:00',in3:'17:00',out3:'22:00'},S.get('attendance_schedule')||{});
+  return Object.assign({in1:'06:00',out1:'12:00',in2:'12:30',out2:'17:00',in3:'17:00',out3:'22:00',
+    tolFirstMin:60,tolOtherMin:5},S.get('attendance_schedule')||{});
 }
 function saveAttendSchedule(sch){S.set('attendance_schedule',sch);}
 
 function toMinutes(hhmm){var p=hhmm.split(':');return parseInt(p[0],10)*60+parseInt(p[1],10);}
 
-// Builds the full month's payroll data: a day-by-day P/½/blank grid per staff,
-// total days present, total OT hours, and a separate exceptions list for any
-// check-in/out outside its tolerance window.
+// Builds the full month's payroll data.
+// Presence per day: a check-in with no matching check-out = ½ day; a
+// complete check-in+check-out pair = 1 day (capped at 1, however many
+// complete pairs happen in a day). OT hours are computed per day, per pair,
+// based on when each pair's check-in actually happened — any pair starting
+// at or after the OT boundary counts its full duration as that day's OT.
 function buildPayrollAttendance(month){
   var schedule=getAttendSchedule();
-  var slots=[
-    {key:'In 1',expected:schedule.in1,special:true},
-    {key:'Out 1',expected:schedule.out1},
-    {key:'In 2',expected:schedule.in2},
-    {key:'Out 2',expected:schedule.out2},
-    {key:'In 3 (OT)',expected:schedule.in3},
-    {key:'Out 3 (OT)',expected:schedule.out3},
-  ];
+  var otBoundaryMin=toMinutes(schedule.in3);
   var scans=getAttendanceScans().filter(function(s){return s.timestamp.substring(0,7)===month;});
   var people=getAttendPeople();
   var parts=month.split('-');
@@ -9220,35 +9219,58 @@ function buildPayrollAttendance(month){
   var exceptions=[];
 
   var rows=people.map(function(p,idx){
-    var dayCells=[];
-    var totalDays=0,totalOTMinutes=0;
+    var regCells=[],otCells=[];
+    var totalDays=0,totalOTHours=0;
     for(var d=1;d<=daysInMonth;d++){
       var dateStr=month+'-'+String(d).padStart(2,'0');
       var dayScans=scans.filter(function(s){return s.name===p.name&&s.timestamp.substring(0,10)===dateStr;})
         .sort(function(a,b){return new Date(a.timestamp)-new Date(b.timestamp);});
-      var cell='';
-      if(dayScans.length>=4){cell='P';totalDays+=1;}
-      else if(dayScans.length>=2){cell='½';totalDays+=0.5;}
-      if(dayScans.length>=6){
-        var otMin=(new Date(dayScans[5].timestamp)-new Date(dayScans[4].timestamp))/60000;
-        if(otMin>0)totalOTMinutes+=otMin;
+
+      var regPresence=0; // 0, 0.5, or 1 for the day
+      var dayOTHours=0;
+      var pairCount=Math.floor(dayScans.length/2);
+      for(var pi=0;pi<pairCount;pi++){
+        var inScan=dayScans[pi*2],outScan=dayScans[pi*2+1];
+        var inMin=(new Date(inScan.timestamp)).getHours()*60+(new Date(inScan.timestamp)).getMinutes();
+        if(inMin>=otBoundaryMin){
+          var hrs=(new Date(outScan.timestamp)-new Date(inScan.timestamp))/3600000;
+          if(hrs>0)dayOTHours+=hrs;
+        } else {
+          regPresence=1; // a completed regular pair = full day credit
+        }
       }
+      if(regPresence<1&&dayScans.length%2===1){
+        // trailing unmatched check-in with no check-out yet
+        var lastIn=dayScans[dayScans.length-1];
+        var lastMin=(new Date(lastIn.timestamp)).getHours()*60+(new Date(lastIn.timestamp)).getMinutes();
+        if(lastMin<otBoundaryMin)regPresence=Math.max(regPresence,0.5);
+      }
+
+      regCells.push(regPresence===1?'P':regPresence===0.5?'½':'');
+      otCells.push(dayOTHours>0?(Math.round(dayOTHours*100)/100):'');
+      totalDays+=regPresence;
+      totalOTHours+=dayOTHours;
+
+      // Exceptions: judge every actual scan against the nearest expected
+      // slot time using the configured tolerance.
       dayScans.forEach(function(scan,si){
-        if(si>=slots.length)return;
-        var slot=slots[si];
         var d1=new Date(scan.timestamp);
         var actualMin=d1.getHours()*60+d1.getMinutes();
-        var expMin=toMinutes(slot.expected);
-        var ok,diff=actualMin-expMin;
-        if(slot.special)ok=(actualMin>=expMin&&actualMin<=expMin+60);
-        else ok=Math.abs(diff)<=5;
+        var isFirstOfDay=(si===0);
+        var nearest=null,nearestDiff=Infinity;
+        [['In 1',schedule.in1],['Out 1',schedule.out1],['In 2',schedule.in2],['Out 2',schedule.out2],['In 3 (OT)',schedule.in3],['Out 3 (OT)',schedule.out3]].forEach(function(s){
+          var diff=Math.abs(actualMin-toMinutes(s[1]));
+          if(diff<nearestDiff){nearestDiff=diff;nearest=s;}
+        });
+        var tol=isFirstOfDay?(schedule.tolFirstMin||60):(schedule.tolOtherMin||5);
+        var ok=isFirstOfDay?(actualMin>=toMinutes(nearest[1])&&actualMin<=toMinutes(nearest[1])+tol):(nearestDiff<=tol);
         if(!ok){
-          exceptions.push({name:p.name,date:dateStr,slot:slot.key,expected:slot.expected,actual:fmtT(scan.timestamp),diffMin:diff});
+          exceptions.push({name:p.name,date:dateStr,slot:nearest[0],expected:nearest[1],actual:fmtT(scan.timestamp),diffMin:actualMin-toMinutes(nearest[1])});
         }
       });
-      dayCells.push(cell);
     }
-    return {no:idx+1,name:p.name,dayCells:dayCells,totalDays:totalDays,otHours:Math.round((totalOTMinutes/60)*100)/100};
+    return {no:idx+1,name:p.name,regCells:regCells,otCells:otCells,
+      totalDays:Math.round(totalDays*10)/10,totalOTHours:Math.round(totalOTHours*100)/100};
   });
   return {rows:rows,exceptions:exceptions,daysInMonth:daysInMonth};
 }
@@ -9264,9 +9286,13 @@ function renderFaceLogTab(){
   var html='<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px;">';
   html+='<div style="font-size:13px;font-weight:800;margin-bottom:10px;">⚙ Shift Schedule <span style="font-weight:400;color:var(--muted);font-size:11px;">(used to judge on-time vs late, and to build the payroll report)</span></div>';
   html+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">';
-  [['in1','In 1 (6:00-7:00 OK)'],['out1','Out 1 (±5 min)'],['in2','In 2 (±5 min)'],['out2','Out 2 (±5 min)'],['in3','In 3 / OT start (±5 min)'],['out3','Out 3 / OT end (±5 min)']].forEach(function(f){
+  [['in1','In 1'],['out1','Out 1'],['in2','In 2'],['out2','Out 2'],['in3','In 3 / OT start'],['out3','Out 3 / OT end']].forEach(function(f){
     html+='<div><label style="font-size:10px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">'+f[1]+'</label><input type="time" id="sch-'+f[0]+'" value="'+sch[f[0]]+'" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;"></div>';
   });
+  html+='</div>';
+  html+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">';
+  html+='<div><label style="font-size:10px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">First check-in window (minutes after In 1)</label><input type="number" min="0" id="sch-tolFirstMin" value="'+(sch.tolFirstMin||60)+'" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;"></div>';
+  html+='<div><label style="font-size:10px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">Tolerance for every other check-in/out (± minutes)</label><input type="number" min="0" id="sch-tolOtherMin" value="'+(sch.tolOtherMin||5)+'" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;"></div>';
   html+='</div>';
   html+='<button onclick="saveAttendScheduleFromForm()" style="margin-top:10px;padding:8px 16px;background:#6366f1;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">💾 Save Schedule</button>';
   html+='</div>';
@@ -9274,6 +9300,7 @@ function renderFaceLogTab(){
   html+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">';
   html+='<div style="font-size:13px;font-weight:800;flex:1;">📊 Payroll Attendance Report</div>';
   html+='<select id="payroll-month" onchange="window._payrollMonth=this.value;" style="border:1.5px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12px;font-family:var(--sans);outline:none;"></select>';
+  html+='<button onclick="exportExamplePayrollExcel()" style="padding:8px 16px;background:#f1f5f9;color:#374151;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">🧪 See Example</button>';
   html+='<button onclick="exportPayrollAttendanceExcel()" style="padding:8px 16px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">⬇ Export Payroll Excel</button>';
   html+='</div>';
 
@@ -9320,10 +9347,36 @@ function saveAttendScheduleFromForm(){
     out2:document.getElementById('sch-out2').value||'17:00',
     in3:document.getElementById('sch-in3').value||'17:00',
     out3:document.getElementById('sch-out3').value||'22:00',
+    tolFirstMin:parseInt(document.getElementById('sch-tolFirstMin').value,10)||60,
+    tolOtherMin:parseInt(document.getElementById('sch-tolOtherMin').value,10)||5,
   };
   saveAttendSchedule(sch);
   toast('✓ Shift schedule saved');
 }
+// Shared sheet layout used by both the real export and the example export —
+// row 1 has merged "Day N" headers spanning 2 columns each, row 2 has the
+// Reg/OT sub-labels underneath.
+function buildPayrollSheetData(data,daysInMonth){
+  var row1=['',''],row2=['No.','Staff Name'];
+  for(var d=1;d<=daysInMonth;d++){row1.push('Day '+d,'');row2.push('Reg','OT');}
+  row1.push('','');row2.push('Total Days','Total OT Hrs');
+  var aoa=[row1,row2];
+  data.rows.forEach(function(r){
+    var line=[r.no,r.name];
+    for(var d=0;d<daysInMonth;d++)line.push(r.regCells[d],r.otCells[d]);
+    line.push(r.totalDays,r.totalOTHours);
+    aoa.push(line);
+  });
+  var merges=[{s:{r:0,c:0},e:{r:1,c:0}},{s:{r:0,c:1},e:{r:1,c:1}}];
+  for(var d=0;d<daysInMonth;d++){var col=2+d*2;merges.push({s:{r:0,c:col},e:{r:0,c:col+1}});}
+  var lastCol=2+daysInMonth*2;
+  merges.push({s:{r:0,c:lastCol},e:{r:1,c:lastCol}},{s:{r:0,c:lastCol+1},e:{r:1,c:lastCol+1}});
+  var colWidths=[{wch:5},{wch:22}];
+  for(var d=0;d<daysInMonth;d++)colWidths.push({wch:5},{wch:5});
+  colWidths.push({wch:11},{wch:12});
+  return {aoa:aoa,merges:merges,colWidths:colWidths};
+}
+
 function exportPayrollAttendanceExcel(){
   if(typeof XLSX==='undefined'){toast('Excel library not loaded',true);return;}
   var month=window._payrollMonth||todayStr().substring(0,7);
@@ -9332,23 +9385,12 @@ function exportPayrollAttendanceExcel(){
   if(!data.rows.length){toast('No staff to report on — add staff first',true);return;}
 
   var wb=XLSX.utils.book_new();
-
-  // Sheet 1: the payroll grid — No. | Staff Name | Day 1..31 | Total Days | OT Hours
-  var header=['No.','Staff Name'];
-  for(var d=1;d<=data.daysInMonth;d++)header.push(String(d));
-  header.push('Total Days','OT Hours');
-  var rows=[header];
-  data.rows.forEach(function(r){
-    rows.push([r.no,r.name].concat(r.dayCells).concat([r.totalDays,r.otHours]));
-  });
-  var ws1=XLSX.utils.aoa_to_sheet(rows);
-  var colWidths=[{wch:5},{wch:20}];
-  for(var d=1;d<=data.daysInMonth;d++)colWidths.push({wch:4});
-  colWidths.push({wch:11},{wch:10});
-  ws1['!cols']=colWidths;
+  var sheetData=buildPayrollSheetData(data,data.daysInMonth);
+  var ws1=XLSX.utils.aoa_to_sheet(sheetData.aoa);
+  ws1['!merges']=sheetData.merges;
+  ws1['!cols']=sheetData.colWidths;
   XLSX.utils.book_append_sheet(wb,ws1,'Payroll Attendance');
 
-  // Sheet 2: exceptions — every check-in/out that fell outside its tolerance window
   var excRows=[['Staff Name','Date','Check','Set Time','Actual Time','Difference (min)']];
   data.exceptions.sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:a.name.localeCompare(b.name);}).forEach(function(e){
     excRows.push([e.name,e.date,e.slot,e.expected,e.actual,(e.diffMin>0?'+':'')+e.diffMin]);
@@ -9359,6 +9401,54 @@ function exportPayrollAttendanceExcel(){
 
   XLSX.writeFile(wb,'MKL_Payroll_Attendance_'+month+'.xlsx');
   toast('⬇ Payroll attendance exported — '+monthLabel);
+}
+
+// Entirely fabricated demo data — never touches getAttendanceScans() or any
+// real record — so the report's layout can be checked before relying on it.
+function exportExamplePayrollExcel(){
+  if(typeof XLSX==='undefined'){toast('Excel library not loaded',true);return;}
+  var schedule=getAttendSchedule();
+  var daysInMonth=30;
+  var exampleRows=[
+    {no:1,name:'Example: Dara (on time every day)',regCells:[],otCells:[],totalDays:0,totalOTHours:0},
+    {no:2,name:'Example: Sopheak (half-days & absences)',regCells:[],otCells:[],totalDays:0,totalOTHours:0},
+    {no:3,name:'Example: Vanna (regular + OT some days)',regCells:[],otCells:[],totalDays:0,totalOTHours:0},
+  ];
+  for(var d=1;d<=daysInMonth;d++){
+    if(d===15){exampleRows[0].regCells.push('');exampleRows[0].otCells.push('');}
+    else{exampleRows[0].regCells.push('P');exampleRows[0].otCells.push('');exampleRows[0].totalDays+=1;}
+
+    if(d%5===0){exampleRows[1].regCells.push('');exampleRows[1].otCells.push('');}
+    else if(d%3===0){exampleRows[1].regCells.push('½');exampleRows[1].otCells.push('');exampleRows[1].totalDays+=0.5;}
+    else{exampleRows[1].regCells.push('P');exampleRows[1].otCells.push('');exampleRows[1].totalDays+=1;}
+
+    exampleRows[2].regCells.push('P');exampleRows[2].totalDays+=1;
+    if(d%4===0){var ot=2+(d%3);exampleRows[2].otCells.push(ot);exampleRows[2].totalOTHours+=ot;}
+    else exampleRows[2].otCells.push('');
+  }
+  exampleRows.forEach(function(r){r.totalDays=Math.round(r.totalDays*10)/10;r.totalOTHours=Math.round(r.totalOTHours*100)/100;});
+
+  var wb=XLSX.utils.book_new();
+  var sheetData=buildPayrollSheetData({rows:exampleRows},daysInMonth);
+  var ws1=XLSX.utils.aoa_to_sheet(sheetData.aoa);
+  ws1['!merges']=sheetData.merges;
+  ws1['!cols']=sheetData.colWidths;
+  XLSX.utils.book_append_sheet(wb,ws1,'Example Payroll');
+
+  var noteWs=XLSX.utils.aoa_to_sheet([
+    ['This sheet uses made-up example data only — nothing here is real.'],
+    [''],
+    ['P = full day (checked in and completed a regular shift with a matching check-out)'],
+    ['½ = half day (checked in, but no matching check-out yet)'],
+    ['blank = absent that day'],
+    ['OT column = hours worked on a check-in/out pair starting at or after '+schedule.in3+' (your current OT start time)'],
+    ['Total Days / Total OT Hrs = the month\'s totals, for payroll'],
+  ]);
+  noteWs['!cols']=[{wch:80}];
+  XLSX.utils.book_append_sheet(wb,noteWs,'How to read this');
+
+  XLSX.writeFile(wb,'MKL_Payroll_Attendance_EXAMPLE.xlsx');
+  toast('⬇ Example downloaded — made-up data only, nothing real');
 }
 function exportFaceAttendanceExcel(){
   if(typeof XLSX==='undefined'){toast('Excel library not loaded',true);return;}
